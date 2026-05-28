@@ -1,0 +1,39 @@
+=== Setup started 2026-05-21T (agent attempted) ===
+
+--- Environment ---
+Project: C:\Users\alexa\Projects\madisonville-pickpoint-stock-tracker
+Agent workspace root: moved to project path successfully.
+
+--- Step 1: cd ---
+OK (working directory set to project root)
+
+--- Step 2: npm install ---
+NOT RUN — agent terminal failed immediately on Windows.
+
+Error from Cursor shell (all attempts, foreground and background):
+  Sandbox policy 'workspace_readwrite' is not supported on this system.
+  Ensure the sandbox helper binary is available, or use 'insecure_none'.
+  Reason: Windows sandbox helper only provides network proxy, not filesystem isolation
+
+--- Step 3: npm run build ---
+NOT RUN (depends on npm install; node_modules not present)
+
+--- Step 4: npm run dev ---
+NOT STARTED (depends on successful install/build)
+
+--- TypeScript / source review ---
+IDE linter: no errors reported under src/.
+No node_modules present; build was not executed to confirm next build.
+
+--- http://localhost:3000 ---
+CHECKED via in-IDE browser: FAILED
+  Page URL: chrome-error://chromewebdata/ (connection refused / no server listening)
+
+=== Setup finished (incomplete) ===
+
+To complete setup locally, run in PowerShell from this folder:
+  .\run-setup.ps1
+Then start the dev server:
+  npm run dev
+
+Or double-click START-APP.bat (installs deps if needed, then runs dev).
