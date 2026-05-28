@@ -37,22 +37,31 @@ Use **Admin Mode** in the header to unlock add/edit/delete, export, import, and 
 
 ---
 
-## Deploy to Vercel (< 2 minutes)
+## Live Demo
 
-1. Push this repo to GitHub:
-   ```bash
-   git init
-   git add .
-   git commit -m "Initial PickPoint stock tracker"
-   git remote add origin https://github.com/YOUR_USERNAME/madisonville-pickpoint-stock-tracker.git
-   git push -u origin main
-   ```
+**https://madisonville-pickpoint-stock-tracker.vercel.app** (coming soon after Vercel deploy)
 
-2. Go to [vercel.com/new](https://vercel.com/new) and import the repository.
+## Deploy to Vercel (Recommended - Free)
 
-3. Framework preset: **Next.js** (auto-detected). No environment variables needed.
+This app is already set up for easy one-click deployment:
 
-4. Click **Deploy**. Your app will be live in under 2 minutes.
+1. Go to [https://vercel.com/new](https://vercel.com/new)
+2. Import the GitHub repository: `alexanderrichhunt-creator/madisonville-pickpoint-stock-tracker`
+3. Vercel will auto-detect it's a Next.js project.
+4. Click **Deploy**.
+
+Your site will be live at something like `https://madisonville-pickpoint-stock-tracker.vercel.app` in under 2 minutes, with automatic deployments on every push to GitHub.
+
+**Alternative (Render):** You can also deploy it on Render's free tier by connecting the same GitHub repo and selecting the `next` build command.
+
+## Local Development
+
+```bash
+npm install
+npm run dev
+```
+
+Open [http://localhost:3000](http://localhost:3000).
 
 ---
 
