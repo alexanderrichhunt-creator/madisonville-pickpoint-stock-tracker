@@ -64,43 +64,52 @@ ADMIN_INITIAL_PASSWORD="mpp2026"
 
 ---
 
-## Deploy to Render (Free Tier — Recommended)
+## Deploy to Render (Recommended - Mimics the Working Madisonville Branch Talk Tracker)
 
-This project was designed for the same Render + Neon stack used in prior internal tools.
+This project now uses the same reliable pattern as your working **Madisonville Branch Talk Tracker**:
 
-### Option A: Using render.yaml (Recommended)
+- Next.js frontend (exact same UI you have now)
+- Google Sheets as the database (via service account - same as the Talk Tracker)
 
-The project includes a `render.yaml` file. This gives you:
-- Consistent build + start commands
-- Better caching behavior between deploys
-- Easier configuration
+This eliminates all the Prisma/Neon engine problems.
 
-1. Push your code to GitHub.
-2. On Render, go to **New +** → **Blueprint** (or "Deploy from Blueprint").
-3. Connect the GitHub repo.
-4. Render will detect the `render.yaml` and create the service for you.
-5. After creation, go to the service → **Environment** tab and manually add:
-   - `DATABASE_URL` (your Neon connection string)
-   - `NEXTAUTH_URL` (your `https://your-app.onrender.com`)
-   - `NEXTAUTH_SECRET` (a long random string)
+### Deployment (Google Sheets Backend - Same as Your Working Talk Tracker)
+
+This now uses the exact same reliable pattern as your **Madisonville Branch Talk Tracker**:
+
+- Google Sheets as the database (via Service Account)
+- Simple load/save per tab (same pattern as the Talk Tracker)
+
+#### Steps
+
+1. Create a new Google Sheet (e.g. "PickPoint Inventory").
+2. Create these tabs with the following headers (first row):
+   - **Medications**: id, ndc, name, strength, size, class, categories, qty, lowQty, highQty, machine, drawer, row, cost
+   - **Activity**: id, timestamp, medicationId, drugName, ndc, qtyDispensed, remainingQty
+   - **Suggestions**: id, name, strength, ndc, suggestedCount, notes, requestedBy, requestedAt
+   - **Settings**: key, value
+
+3. Create a Google Service Account (same as your Talk Tracker):
+   - Go to Google Cloud Console → IAM & Admin → Service Accounts
+   - Create a new service account
+   - Create a JSON key and download it (credentials.json)
+
+4. Share the Google Sheet with the service account email (give it Editor access).
+
+5. On Render:
+   - Set these Environment Variables:
+     - `GOOGLE_SERVICE_ACCOUNT_JSON` = the full JSON content of your credentials.json (or base64 encoded)
+     - `GOOGLE_SHEETS_SPREADSHEET_ID` = the ID from your sheet URL
+   - Build Command: `npm ci && npm run build`
+   - Start Command: `npm run start -- -p $PORT`
+
 6. Deploy.
 
-### Option B: Manual Setup
+After deploy, visit `/api/bootstrap-admin` once to create the initial admin user.
 
-If you prefer to set it up manually:
+Then log in with admin / mpp2026.
 
-1. Push this repo to GitHub.
-2. On Render: New → Web Service → connect the GitHub repo.
-3. Use these settings:
-   - **Build Command**: `npm cache clean --force && rm -rf node_modules && npm ci && rm -rf node_modules/.prisma && npx prisma generate && npx prisma db push && npm run build`
-   - **Start Command**: `npm run start -- -p $PORT`
-4. Add the required environment variables (see below).
-5. Deploy.
-
-On first visit after deploy the database will self-seed.
-
-**Note about the "No build cache found" warning**:
-This message comes from Next.js during `next build`. On Render (especially the free tier), full build caching is limited compared to services like Vercel. The `render.yaml` + Render's automatic `node_modules` caching helps reduce this over time. You can mostly ignore the warning — it does not mean the deploy is broken. Build times will improve slightly on subsequent deploys as Render caches what it can.
+Changes will now persist like in your working Talk Tracker.
 
 ---
 
