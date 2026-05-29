@@ -92,7 +92,7 @@ If you prefer to set it up manually:
 1. Push this repo to GitHub.
 2. On Render: New → Web Service → connect the GitHub repo.
 3. Use these settings:
-   - **Build Command**: `PRISMA_CLIENT_ENGINE_TYPE=library npm ci && rm -rf node_modules/.prisma && mv prisma.config.ts prisma.config.ts.bak 2>/dev/null || true && npx prisma generate && mv prisma.config.ts.bak prisma.config.ts 2>/dev/null || true && npx prisma db push && npm run build`
+   - **Build Command**: `PRISMA_CLIENT_ENGINE_TYPE=library rm -rf node_modules && npm ci && rm -rf node_modules/.prisma && mv prisma.config.ts prisma.config.ts.bak 2>/dev/null || true && npx prisma generate && mv prisma.config.ts.bak prisma.config.ts 2>/dev/null || true && npx prisma db push && npm run build`
    - **Start Command**: `npm run start -- -p $PORT`
 4. Add the required environment variables (see below).
 5. Deploy.
