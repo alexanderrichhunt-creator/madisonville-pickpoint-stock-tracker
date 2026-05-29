@@ -28,10 +28,12 @@ export default function RootLayout({
   return (
     <html lang="en">
       <body className={inter.className}>
-        <InventoryProvider>
-          {children}
-          <Toaster richColors closeButton position="top-right" />
-        </InventoryProvider>
+        <SessionProvider>
+          <InventoryProvider>
+            {children}
+            <Toaster richColors closeButton position="top-right" />
+          </InventoryProvider>
+        </SessionProvider>
       </body>
     </html>
   );
