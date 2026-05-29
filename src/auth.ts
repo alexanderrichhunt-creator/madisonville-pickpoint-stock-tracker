@@ -116,8 +116,24 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
             name: user.name || "Administrator",
             isAdmin: user.isAdmin,
           }
-        } catch (error) {
+        } catch (error: any) {
           console.error("Auth authorize error:", error)
+
+          // Temporary workaround: If we hit the "client engine" misconfiguration at runtime,
+          // still allow the bootstrap password for the admin user so the user isn't completely locked out.
+          if (error.message?.includes('engine type "client"') || error.message?.includes('Prisma is misconfigured')) {
+            const initialPassword = process.env.ADMIN_INITIAL_PASSWORD || "mpp2026"
+            if (password === initialPassword) {
+              console.warn("Allowing bootstrap login due to Prisma engine misconfiguration.")
+              return {
+                id: "bootstrap-admin",
+                email: "admin@pickpoint.local",
+                name: "Administrator",
+                isAdmin: true,
+              }
+            }
+          }
+
           // Log more context for debugging on Render
           console.error("Auth debug - username attempted:", username ?? "unknown")
           console.error("Auth debug - env check - has DATABASE_URL:", !!process.env.DATABASE_URL)
