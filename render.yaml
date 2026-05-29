@@ -1,0 +1,21 @@
+services:
+  - type: web
+    name: madisonville-pickpoint-stock-tracker
+    env: node
+    region: oregon  # Change to ohio if your database is closer to there
+    plan: free      # Change to starter or higher if you upgrade later
+    buildCommand: npm ci && npx prisma generate && npx prisma db push && npm run build
+    startCommand: npm run start -- -p $PORT
+    autoDeploy: true
+    envVars:
+      - key: DATABASE_URL
+        sync: false   # Set this manually in the Render dashboard (never commit it)
+      - key: NEXTAUTH_URL
+        sync: false   # Set to your https://your-app.onrender.com
+      - key: NEXTAUTH_SECRET
+        sync: false   # Generate a strong random string
+      # Optional: change the bootstrap admin password
+      # - key: ADMIN_INITIAL_PASSWORD
+      #   sync: false
+    # Render will automatically cache node_modules and .next between builds on most plans.
+    # For even faster builds on paid plans, you can add a disk for persistent cache if needed.

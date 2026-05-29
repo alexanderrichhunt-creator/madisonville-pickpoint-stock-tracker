@@ -68,16 +68,39 @@ ADMIN_INITIAL_PASSWORD="mpp2026"
 
 This project was designed for the same Render + Neon stack used in prior internal tools.
 
+### Option A: Using render.yaml (Recommended)
+
+The project includes a `render.yaml` file. This gives you:
+- Consistent build + start commands
+- Better caching behavior between deploys
+- Easier configuration
+
+1. Push your code to GitHub.
+2. On Render, go to **New +** → **Blueprint** (or "Deploy from Blueprint").
+3. Connect the GitHub repo.
+4. Render will detect the `render.yaml` and create the service for you.
+5. After creation, go to the service → **Environment** tab and manually add:
+   - `DATABASE_URL` (your Neon connection string)
+   - `NEXTAUTH_URL` (your `https://your-app.onrender.com`)
+   - `NEXTAUTH_SECRET` (a long random string)
+6. Deploy.
+
+### Option B: Manual Setup
+
+If you prefer to set it up manually:
+
 1. Push this repo to GitHub.
 2. On Render: New → Web Service → connect the GitHub repo.
-3. Build Command: `npm ci && npx prisma generate && npx prisma db push && npm run build`
-4. Start Command: `npm run start -- -p $PORT`
-5. Add the environment variables above (especially the real Neon DATABASE_URL and a strong NEXTAUTH_SECRET).
-6. Deploy.
+3. Use these settings:
+   - **Build Command**: `npm ci && npx prisma generate && npx prisma db push && npm run build`
+   - **Start Command**: `npm run start -- -p $PORT`
+4. Add the required environment variables (see below).
+5. Deploy.
 
 On first visit after deploy the database will self-seed.
 
-Render free web services sleep after inactivity; the first request after wake will auto-seed if needed (fast).
+**Note about the "No build cache found" warning**:
+This message comes from Next.js during `next build`. On Render (especially the free tier), full build caching is limited compared to services like Vercel. The `render.yaml` + Render's automatic `node_modules` caching helps reduce this over time. You can mostly ignore the warning — it does not mean the deploy is broken. Build times will improve slightly on subsequent deploys as Render caches what it can.
 
 ---
 
