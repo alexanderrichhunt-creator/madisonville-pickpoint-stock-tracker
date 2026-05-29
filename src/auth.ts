@@ -115,6 +115,10 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
           }
         } catch (error) {
           console.error("Auth authorize error:", error)
+          // Log more context for debugging on Render
+          console.error("Auth debug - username attempted:", username)
+          console.error("Auth debug - env check - has DATABASE_URL:", !!process.env.DATABASE_URL)
+          console.error("Auth debug - env check - has NEXTAUTH_SECRET:", !!process.env.NEXTAUTH_SECRET)
           return null
         }
       },
