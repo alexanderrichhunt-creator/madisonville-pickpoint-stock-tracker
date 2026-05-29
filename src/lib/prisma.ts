@@ -1,12 +1,16 @@
 import { PrismaClient } from '@prisma/client'
+import { Pool } from 'pg'
+import { PrismaPg } from '@prisma/adapter-pg'
 
 const globalForPrisma = globalThis as unknown as {
   prisma: PrismaClient | undefined
 }
 
+// Global flag so the UI can show a clear "Degraded Mode" banner
+export let isDegradedMode = false;
+
 function createPrismaClient() {
-  // During Next.js build (static page data collection) or when DATABASE_URL
-  // is not available, return a safe proxy to avoid "client engine" constructor errors.
+  // During build or when DATABASE_URL is missing, return a safe proxy
   const isBuild =
     process.env.NEXT_PHASE === 'phase-production-build' ||
     !process.env.DATABASE_URL;
@@ -22,24 +26,31 @@ function createPrismaClient() {
   }
 
   try {
+    // Use the Postgres adapter so the "client" engine works with standard Postgres/Neon
+    const pool = new Pool({ connectionString: process.env.DATABASE_URL });
+    const adapter = new PrismaPg(pool);
+
     const client =
       globalForPrisma.prisma ??
-      new PrismaClient({
-        log: process.env.NODE_ENV === 'development' ? ['error', 'warn'] : ['error'],
-      });
+      new PrismaClient({ adapter });
 
     if (process.env.NODE_ENV !== 'production') globalForPrisma.prisma = client;
+    isDegradedMode = false;
     return client;
   } catch (err: any) {
-    if (err.message?.includes('engine type "client"')) {
-      console.error("FATAL RUNTIME ERROR: Prisma generated the wrong 'client' engine. The app will not work until you redeploy with PRISMA_CLIENT_ENGINE_TYPE=library + rm -rf node_modules in the build command and clear Render's build cache.");
-      // Return a stub so the app doesn't completely 500 on every Prisma access
+    console.error("Prisma client initialization error:", err);
+
+    if (err.message?.includes('engine type "client"') || err.message?.includes('Prisma is misconfigured')) {
+      isDegradedMode = true;
+      console.error("Prisma is in DEGRADED MODE due to wrong engine type. Real database writes will not work.");
+      // Return a stub that allows the app to function in memory
       return new Proxy({} as PrismaClient, {
         get() {
-          throw new Error("Prisma is misconfigured (wrong engine type generated). Check build logs and redeploy with the correct command.");
+          throw new Error("Prisma is misconfigured (wrong engine type generated). Changes will not be saved until this is fixed.");
         },
       });
     }
+
     throw err;
   }
 }

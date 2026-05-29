@@ -33,6 +33,7 @@ import {
 import { ActivityEntry } from "@/types/activity";
 import { Medication } from "@/types/medication";
 import { MedicationSuggestion } from "@/types/suggestion";
+import { isDegradedMode as prismaIsDegradedMode } from "@/lib/prisma";
 
 interface InventoryContextValue {
   medications: Medication[];
@@ -73,6 +74,9 @@ interface InventoryContextValue {
   currentUser: { name?: string | null; email?: string | null } | null;
   loginAdmin: (username: string, password: string) => Promise<boolean>;
   logout: () => Promise<void>;
+
+  // Degraded mode (when Prisma client has the wrong engine type)
+  isDegradedMode: boolean;
 }
 
 const InventoryContext = createContext<InventoryContextValue | null>(null);
@@ -473,6 +477,8 @@ export function InventoryProvider({ children }: { children: React.ReactNode }) {
       currentUser,
       loginAdmin,
       logout,
+
+      isDegradedMode: prismaIsDegradedMode,
     }),
     [
       medications,
@@ -503,6 +509,7 @@ export function InventoryProvider({ children }: { children: React.ReactNode }) {
       deleteSuggestion,
       startAddingFromSuggestion,
       clearSuggestionForAdding,
+      prismaIsDegradedMode,
     ]
   );
 
