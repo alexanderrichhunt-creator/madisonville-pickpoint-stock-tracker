@@ -21,14 +21,21 @@ function createPrismaClient() {
     });
   }
 
-  const client =
-    globalForPrisma.prisma ??
-    new PrismaClient({
-      log: process.env.NODE_ENV === 'development' ? ['error', 'warn'] : ['error'],
-    });
+  try {
+    const client =
+      globalForPrisma.prisma ??
+      new PrismaClient({
+        log: process.env.NODE_ENV === 'development' ? ['error', 'warn'] : ['error'],
+      });
 
-  if (process.env.NODE_ENV !== 'production') globalForPrisma.prisma = client;
-  return client;
+    if (process.env.NODE_ENV !== 'production') globalForPrisma.prisma = client;
+    return client;
+  } catch (err: any) {
+    if (err.message?.includes('engine type "client"')) {
+      console.error("FATAL RUNTIME ERROR: The generated Prisma client is using the wrong 'client' engine. Redeploy using PRISMA_CLIENT_ENGINE_TYPE=library in the build command + clear Render build cache.");
+    }
+    throw err;
+  }
 }
 
 export const prisma = createPrismaClient();
