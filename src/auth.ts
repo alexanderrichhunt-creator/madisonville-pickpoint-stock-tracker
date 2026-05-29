@@ -132,22 +132,37 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
   },
   callbacks: {
     async jwt({ token, user }) {
-      if (user) {
-        ;(token as any).id = user.id
-        ;(token as any).isAdmin = (user as any).isAdmin ?? false
+      try {
+        if (user) {
+          ;(token as any).id = user.id
+          ;(token as any).isAdmin = (user as any).isAdmin ?? false
+        }
+        return token
+      } catch (err) {
+        console.error("JWT callback error:", err);
+        throw err;
       }
-      return token
     },
     async session({ session, token }) {
-      if (session.user) {
-        ;(session.user as any).id = (token as any).id as string
-        ;(session.user as any).isAdmin = (token as any).isAdmin ?? false
+      try {
+        if (session.user) {
+          ;(session.user as any).id = (token as any).id as string
+          ;(session.user as any).isAdmin = (token as any).isAdmin ?? false
+        }
+        return session
+      } catch (err) {
+        console.error("Session callback error:", err);
+        throw err;
       }
-      return session
     },
   },
   pages: {
     signIn: "/login", // We will use a dialog instead, but keep for future
   },
   trustHost: true,
+  logger: {
+    error(code, metadata) {
+      console.error("NextAuth Error:", code, metadata);
+    },
+  },
 })
