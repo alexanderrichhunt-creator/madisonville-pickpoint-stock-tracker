@@ -161,8 +161,8 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
   },
   trustHost: true,
   logger: {
-    error(code, metadata) {
-      console.error("NextAuth Error:", code, metadata);
+    error(error) {
+      console.error("NextAuth Error:", error);
     },
   },
 })
