@@ -72,11 +72,12 @@ export function AdminMenu() {
     }
   }, [suggestionForAdding]);
 
-  const handleAdd = () => {
-    if (addMedication(formData)) {
+  const handleAdd = async () => {
+    const success = await addMedication(formData);
+    if (success) {
       // If we added from a suggestion, auto-remove the suggestion
       if (suggestionForAdding) {
-        deleteSuggestion(suggestionForAdding.id);
+        await deleteSuggestion(suggestionForAdding.id);
         clearSuggestionForAdding();
       }
 
@@ -85,16 +86,16 @@ export function AdminMenu() {
     }
   };
 
-  const handleImport = (e: React.ChangeEvent<HTMLInputElement>) => {
+  const handleImport = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
     const reader = new FileReader();
-    reader.onload = (event) => {
+    reader.onload = async (event) => {
       try {
         const data = JSON.parse(event.target?.result as string);
-        importInventory(data);
+        await importInventory(data);
       } catch {
-        importInventory(null);
+        await importInventory(null);
       }
     };
     reader.readAsText(file);
@@ -135,6 +136,8 @@ export function AdminMenu() {
             <RotateCcw className="mr-2 h-4 w-4" aria-hidden="true" />
             Reset to Original PDF Data
           </DropdownMenuItem>
+
+          {/* Auto-initialize runs on first load when DB is empty. Manual trigger removed to avoid confusion. */}
         </DropdownMenuContent>
       </DropdownMenu>
 
@@ -188,8 +191,8 @@ export function AdminMenu() {
           <AlertDialogFooter>
             <AlertDialogCancel>Cancel</AlertDialogCancel>
             <AlertDialogAction
-              onClick={() => {
-                resetToSeed();
+              onClick={async () => {
+                await resetToSeed();
                 setResetOpen(false);
               }}
             >

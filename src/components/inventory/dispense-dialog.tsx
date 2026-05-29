@@ -21,7 +21,7 @@ interface DispenseDialogProps {
   medication: Medication | null;
   open: boolean;
   onOpenChange: (open: boolean) => void;
-  onConfirm: (id: string, qty: number) => boolean;
+  onConfirm: (id: string, qty: number) => Promise<boolean> | boolean;
 }
 
 export function DispenseDialog({
@@ -37,9 +37,10 @@ export function DispenseDialog({
     onOpenChange(nextOpen);
   };
 
-  const handleConfirm = () => {
+  const handleConfirm = async () => {
     if (!medication) return;
-    if (onConfirm(medication.id, qty)) {
+    const success = await onConfirm(medication.id, qty);
+    if (success) {
       handleOpenChange(false);
     }
   };

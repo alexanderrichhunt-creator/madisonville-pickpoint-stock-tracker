@@ -1,8 +1,11 @@
 import type { Metadata, Viewport } from "next";
 import { Inter } from "next/font/google";
 import { Toaster } from "@/components/ui/sonner";
+import { SessionProvider } from "@/components/auth/session-provider";
 import { InventoryProvider } from "@/hooks/use-inventory-store";
 import "./globals.css";
+
+export const dynamic = "force-dynamic";
 
 const inter = Inter({ subsets: ["latin"] });
 

@@ -1,0 +1,111 @@
+// This is your Prisma schema file.
+// Learn more about it at https://pris.ly/d/prisma-schema
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+// User model for authentication (using Auth.js / NextAuth)
+model User {
+  id            String    @id @default(cuid())
+  name          String?
+  email         String    @unique
+  emailVerified DateTime?
+  image         String?
+  isAdmin       Boolean   @default(false)
+  accounts      Account[]
+  sessions      Session[]
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
+}
+
+model Account {
+  id                String  @id @default(cuid())
+  userId            String
+  type              String
+  provider          String
+  providerAccountId String
+  refresh_token     String?
+  access_token      String?
+  expires_at        Int?
+  token_type        String?
+  scope             String?
+  id_token          String?
+  session_state     String?
+  user              User    @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([provider, providerAccountId])
+}
+
+model Session {
+  id           String   @id @default(cuid())
+  sessionToken String   @unique
+  userId       String
+  expires      DateTime
+  user         User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+}
+
+model VerificationToken {
+  identifier String
+  token      String   @unique
+  expires    DateTime
+
+  @@unique([identifier, token])
+}
+
+// Core domain models
+model Medication {
+  id          String   @id
+  ndc         String
+  name        String
+  strength    String
+  size        String
+  class       String
+  categories  String[]
+  qty         Int
+  lowQty      Int
+  highQty     Int
+  machine     Int
+  drawer      String
+  row         Int
+  cost        Int      @default(0)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  activity ActivityLog[]
+}
+
+model ActivityLog {
+  id            String   @id @default(cuid())
+  timestamp     DateTime @default(now())
+  medicationId  String
+  drugName      String
+  ndc           String?
+  qtyDispensed  Int
+  remainingQty  Int
+  dispensedBy   String?  // User ID or name
+
+  medication Medication @relation(fields: [medicationId], references: [id])
+}
+
+model Suggestion {
+  id             String   @id @default(cuid())
+  name           String
+  strength       String
+  ndc            String?
+  suggestedCount Int?
+  notes          String?
+  requestedBy    String?
+  requestedAt    DateTime @default(now())
+  status         String   @default("pending") // pending | added | rejected
+}
+
+model AppSetting {
+  key       String   @id
+  value     String
+  updatedAt DateTime @updatedAt
+}

@@ -28,9 +28,11 @@ export function formatDateTime(iso: string): string {
   });
 }
 
-export const ADMIN_PIN = "mpp2026";
+// Legacy constants kept only for migration reference. The app is now 100% server-backed (Neon + Prisma).
+// ADMIN_PIN and localStorage persistence were removed in favor of Auth.js + database.
+export const LEGACY_ADMIN_PIN = "mpp2026" as const;
 
-export const STORAGE_KEYS = {
+export const LEGACY_STORAGE_KEYS = {
   medications: "pickpoint-medications",
   activity: "pickpoint-activity",
   lastUpdated: "pickpoint-last-updated",

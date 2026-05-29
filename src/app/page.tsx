@@ -1,5 +1,7 @@
 "use client";
 
+export const dynamic = "force-dynamic";
+
 import { useMemo, useState } from "react";
 import { Header } from "@/components/layout/header";
 import { Footer } from "@/components/layout/footer";
@@ -29,7 +31,7 @@ const defaultFilters: FilterOptions = {
 };
 
 export default function HomePage() {
-  const { medications, isHydrated } = useInventoryStore();
+  const { medications, isHydrated, needsDatabaseSeeding, isAuthenticatedAdmin } = useInventoryStore();
   const [filters, setFilters] = useState<FilterOptions>(defaultFilters);
 
   const filteredMeds = useMemo(
@@ -64,6 +66,16 @@ export default function HomePage() {
           </TabsList>
 
           <TabsContent value="inventory" className="space-y-6">
+            {needsDatabaseSeeding && (
+              <div className="rounded-lg border border-yellow-200 bg-yellow-50 p-4">
+                <p className="font-medium text-yellow-800">
+                  Database is empty.
+                </p>
+                <p className="text-sm text-yellow-700 mt-1">
+                  Auto-initialization is running. If this persists, an administrator can use the Reset action after logging in.
+                </p>
+              </div>
+            )}
             <StatsCards stats={stats} />
             <MachineCapacity />
             <SearchFilters filters={filters} onChange={setFilters} />
