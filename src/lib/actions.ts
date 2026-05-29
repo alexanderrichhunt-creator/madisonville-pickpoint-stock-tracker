@@ -333,13 +333,17 @@ async function seedDatabaseFromOriginalData() {
 /**
  * Ensures at least one admin user exists (call on app start or manually).
  * Used by the auto-seed path.
+ * Also ensures the initial bootstrap password hash is ready.
  */
 export async function ensureAdminUser() {
   try {
     const adminEmail = "admin@pickpoint.local"
-    const existing = await prisma.user.findUnique({ where: { email: adminEmail } })
-    if (!existing) {
-      await prisma.user.create({
+    const initialPassword = process.env.ADMIN_INITIAL_PASSWORD || "mpp2026"
+
+    let user = await prisma.user.findUnique({ where: { email: adminEmail } })
+
+    if (!user) {
+      user = await prisma.user.create({
         data: {
           email: adminEmail,
           name: "Administrator",
@@ -347,9 +351,25 @@ export async function ensureAdminUser() {
         },
       })
       console.log("Auto-created missing admin user during load")
-      return true
     }
-    return false
+
+    // Ensure the initial password hash exists for bootstrap login
+    const hashKey = `admin_password_hash_${user.id}`
+    const existingHash = await prisma.appSetting.findUnique({ where: { key: hashKey } })
+
+    if (!existingHash) {
+      const bcrypt = await import("bcryptjs")
+      const hash = await bcrypt.hash(initialPassword, 10)
+      await prisma.appSetting.create({
+        data: {
+          key: hashKey,
+          value: hash,
+        },
+      })
+      console.log("Auto-created initial admin password hash during load")
+    }
+
+    return true
   } catch (error) {
     console.error("ensureAdminUser failed:", error)
     return false
