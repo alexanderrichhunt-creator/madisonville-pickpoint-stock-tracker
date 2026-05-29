@@ -39,11 +39,14 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
         password: { label: "Password", type: "password" },
       },
       async authorize(credentials) {
+        let username: string | undefined
+        let password: string | undefined
+
         try {
           const parsed = credentialsSchema.safeParse(credentials)
           if (!parsed.success) return null
 
-          const { username, password } = parsed.data
+          ;({ username, password } = parsed.data)
 
           // Look up user by a conventional admin identifier (email or name)
           // We support either "admin" as username or the full email
@@ -116,7 +119,7 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
         } catch (error) {
           console.error("Auth authorize error:", error)
           // Log more context for debugging on Render
-          console.error("Auth debug - username attempted:", username)
+          console.error("Auth debug - username attempted:", username ?? "unknown")
           console.error("Auth debug - env check - has DATABASE_URL:", !!process.env.DATABASE_URL)
           console.error("Auth debug - env check - has NEXTAUTH_SECRET:", !!process.env.NEXTAUTH_SECRET)
           return null
