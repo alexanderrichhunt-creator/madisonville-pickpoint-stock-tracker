@@ -79,6 +79,9 @@ export function LoginDialog() {
             <p className="text-xs text-muted-foreground">
               Default after first deploy: <strong>admin</strong> / <strong>mpp2026</strong>
             </p>
+            <p className="text-[10px] text-muted-foreground mt-2">
+              First time? Visit <code className="font-mono">/api/bootstrap-admin</code> once after deploy.
+            </p>
           </div>
           <DialogFooter>
             <Button type="button" variant="outline" onClick={() => setOpen(false)} disabled={isLoading}>
