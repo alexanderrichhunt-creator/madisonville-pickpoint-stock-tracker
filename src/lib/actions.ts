@@ -1,10 +1,20 @@
 'use server'
 
-import { prisma } from '@/lib/prisma'
 import { revalidatePath } from 'next/cache'
 import { SEED_MEDICATIONS, SEED_METADATA } from '@/data/seed-data'
-import bcrypt from 'bcryptjs'
 import { auth } from '@/auth'
+
+// Google Sheets service (replacing Prisma/Neon - modeled after the successful Madisonville Branch Talk Tracker pattern)
+import {
+  loadMedications,
+  saveMedications,
+  loadActivity,
+  saveActivity,
+  loadSuggestions,
+  saveSuggestions,
+  loadSettings,
+  saveSettings,
+} from '@/lib/google-sheets'
 
 async function requireAdmin() {
   const session = await auth()
@@ -14,41 +24,46 @@ async function requireAdmin() {
   return session.user
 }
 
-// Helper to detect if we're in degraded mode due to wrong Prisma engine
-function isPrismaMisconfigured(error: any): boolean {
-  return error?.message?.includes('Prisma is misconfigured') ||
-         error?.message?.includes('engine type "client"') ||
-         error?.message?.includes('wrong engine type generated');
-}
-
 export async function getMedications() {
-  return prisma.medication.findMany({
-    orderBy: { name: 'asc' },
-  })
+  try {
+    return await loadMedications()
+  } catch (error) {
+    console.error("Failed to load medications from Google Sheets, falling back to seed:", error)
+    return SEED_MEDICATIONS
+  }
 }
 
 export async function getActivityLog() {
-  return prisma.activityLog.findMany({
-    orderBy: { timestamp: 'desc' },
-    take: 100,
-  })
+  try {
+    return await loadActivity()
+  } catch (error) {
+    console.error("Failed to load activity from Google Sheets:", error)
+    return []
+  }
 }
 
 export async function getSuggestions() {
-  return prisma.suggestion.findMany({
-    orderBy: { requestedAt: 'desc' },
-  })
+  try {
+    return await loadSuggestions()
+  } catch (error) {
+    console.error("Failed to load suggestions from Google Sheets:", error)
+    return []
+  }
 }
 
 export async function getAppSettings() {
-  const settings = await prisma.appSetting.findMany()
-  const map: Record<string, any> = {}
-  settings.forEach(s => {
-    map[s.key] = s.value
-  })
-  return {
-    totalSlots: parseInt(map.total_slots || '90'),
-    dataAsOf: map.data_as_of || 'April 29, 2026',
+  try {
+    const settings = await loadSettings()
+    return {
+      totalSlots: parseInt(settings.total_slots || '90'),
+      dataAsOf: settings.data_as_of || 'April 29, 2026',
+    }
+  } catch (error) {
+    console.error("Failed to load settings from Google Sheets:", error)
+    return {
+      totalSlots: 90,
+      dataAsOf: 'April 29, 2026',
+    }
   }
 }
 
@@ -72,30 +87,30 @@ export async function addMedication(data: {
   await requireAdmin()
   const id = `${data.ndc}-${data.machine}${data.drawer}${data.row}`
 
-  const existing = await prisma.medication.findUnique({ where: { id } })
+  const meds = await loadMedications()
+  const existing = meds.find(m => m.id === id)
   if (existing) {
     throw new Error("A medication with this NDC and location already exists.")
   }
 
-  await prisma.medication.create({
-    data: {
-      id,
-      ndc: data.ndc,
-      name: data.name,
-      strength: data.strength,
-      size: data.size,
-      class: data.class,
-      categories: data.categories,
-      qty: data.qty,
-      lowQty: data.lowQty,
-      highQty: data.highQty,
-      machine: data.machine,
-      drawer: data.drawer,
-      row: data.row,
-      cost: data.cost ?? 0,
-    },
-  })
+  const newMed = {
+    id,
+    ndc: data.ndc,
+    name: data.name,
+    strength: data.strength,
+    size: data.size,
+    class: data.class,
+    categories: data.categories,
+    qty: data.qty,
+    lowQty: data.lowQty,
+    highQty: data.highQty,
+    machine: data.machine,
+    drawer: data.drawer,
+    row: data.row,
+    cost: data.cost ?? 0,
+  }
 
+  await saveMedications([...meds, newMed])
   revalidatePath('/')
   return true
 }
@@ -117,32 +132,34 @@ export async function updateMedication(data: {
   cost?: number
 }) {
   await requireAdmin()
-  await prisma.medication.update({
-    where: { id: data.id },
-    data: {
-      ndc: data.ndc,
-      name: data.name,
-      strength: data.strength,
-      size: data.size,
-      class: data.class,
-      categories: data.categories,
-      qty: data.qty,
-      lowQty: data.lowQty,
-      highQty: data.highQty,
-      machine: data.machine,
-      drawer: data.drawer,
-      row: data.row,
-      cost: data.cost ?? 0,
-    },
-  })
+  const meds = await loadMedications()
+  const updatedMeds = meds.map(m => m.id === data.id ? {
+    ...m,
+    ndc: data.ndc,
+    name: data.name,
+    strength: data.strength,
+    size: data.size,
+    class: data.class,
+    categories: data.categories,
+    qty: data.qty,
+    lowQty: data.lowQty,
+    highQty: data.highQty,
+    machine: data.machine,
+    drawer: data.drawer,
+    row: data.row,
+    cost: data.cost ?? 0,
+  } : m)
 
+  await saveMedications(updatedMeds)
   revalidatePath('/')
   return true
 }
 
 export async function deleteMedication(id: string) {
   await requireAdmin()
-  await prisma.medication.delete({ where: { id } })
+  const meds = await loadMedications()
+  const filtered = meds.filter(m => m.id !== id)
+  await saveMedications(filtered)
   revalidatePath('/')
   return true
 }
@@ -241,7 +258,9 @@ export async function addSuggestion(data: {
 
 export async function deleteSuggestion(id: string) {
   await requireAdmin()
-  await prisma.suggestion.delete({ where: { id } })
+  const suggestions = await loadSuggestions()
+  const filtered = suggestions.filter(s => s.id !== id)
+  await saveSuggestions(filtered)
   revalidatePath('/')
   return true
 }
@@ -286,120 +305,40 @@ export async function importInventory(data: any[]) {
 
 export async function resetToSeed() {
   await requireAdmin()
-  return seedDatabaseFromOriginalData()
-}
-
-export async function seedDatabaseIfEmpty() {
-  const count = await prisma.medication.count()
-  if (count === 0) {
-    return seedDatabaseFromOriginalData()
-  }
-  return false
-}
-
-async function seedDatabaseFromOriginalData() {
-  await prisma.$transaction(async (tx) => {
-    await tx.activityLog.deleteMany()
-    await tx.medication.deleteMany()
-    await tx.suggestion.deleteMany()
-
-    // Re-insert all original medications
-    for (const med of SEED_MEDICATIONS) {
-      await tx.medication.create({
-        data: {
-          id: med.id,
-          ndc: med.ndc,
-          name: med.name,
-          strength: med.strength,
-          size: med.size,
-          class: med.class,
-          categories: med.categories,
-          qty: med.qty,
-          lowQty: med.lowQty,
-          highQty: med.highQty,
-          machine: med.machine,
-          drawer: med.drawer,
-          row: med.row,
-          cost: med.cost,
-        },
-      })
-    }
-
-    // Reset settings
-    await tx.appSetting.upsert({
-      where: { key: 'total_slots' },
-      update: { value: '90' },
-      create: { key: 'total_slots', value: '90' },
-    })
-
-    await tx.appSetting.upsert({
-      where: { key: 'data_as_of' },
-      update: { value: JSON.stringify(SEED_METADATA.dataAsOf) },
-      create: { key: 'data_as_of', value: JSON.stringify(SEED_METADATA.dataAsOf) },
-    })
-
-    // Ensure a default admin user exists for first-run login
-    // Default credentials after first seed: username "admin" / password "mpp2026"
-    // On first successful login with the initial password it will be upgraded to a bcrypt hash.
-    const adminEmail = "admin@pickpoint.local"
-    const existingAdmin = await tx.user.findUnique({ where: { email: adminEmail } })
-    if (!existingAdmin) {
-      await tx.user.create({
-        data: {
-          email: adminEmail,
-          name: "Administrator",
-          isAdmin: true,
-        },
-      })
-    }
+  // For Google Sheets version: just reload from the seed data into sheets
+  await saveMedications(SEED_MEDICATIONS)
+  await saveActivity([])
+  await saveSuggestions([])
+  await saveSettings({
+    total_slots: '90',
+    data_as_of: SEED_METADATA.dataAsOf,
   })
-
   revalidatePath('/')
   return true
 }
 
-/**
- * Ensures at least one admin user exists (call on app start or manually).
- * Used by the auto-seed path.
- * Also ensures the initial bootstrap password hash is ready.
- */
-export async function ensureAdminUser() {
+export async function seedDatabaseIfEmpty() {
   try {
-    const adminEmail = "admin@pickpoint.local"
-    const initialPassword = process.env.ADMIN_INITIAL_PASSWORD || "mpp2026"
-
-    let user = await prisma.user.findUnique({ where: { email: adminEmail } })
-
-    if (!user) {
-      user = await prisma.user.create({
-        data: {
-          email: adminEmail,
-          name: "Administrator",
-          isAdmin: true,
-        },
+    const meds = await loadMedications()
+    if (meds.length === 0) {
+      await saveMedications(SEED_MEDICATIONS)
+      await saveActivity([])
+      await saveSuggestions([])
+      await saveSettings({
+        total_slots: '90',
+        data_as_of: SEED_METADATA.dataAsOf,
       })
-      console.log("Auto-created missing admin user during load")
+      return true
     }
-
-    // Ensure the initial password hash exists for bootstrap login
-    const hashKey = `admin_password_hash_${user.id}`
-    const existingHash = await prisma.appSetting.findUnique({ where: { key: hashKey } })
-
-    if (!existingHash) {
-      const bcrypt = await import("bcryptjs")
-      const hash = await bcrypt.hash(initialPassword, 10)
-      await prisma.appSetting.create({
-        data: {
-          key: hashKey,
-          value: hash,
-        },
-      })
-      console.log("Auto-created initial admin password hash during load")
-    }
-
-    return true
+    return false
   } catch (error) {
-    console.error("ensureAdminUser failed:", error)
+    console.error("seedDatabaseIfEmpty error:", error)
     return false
   }
+}
+
+export async function ensureAdminUser() {
+  // For the Google Sheets version, the bootstrap-admin endpoint handles this.
+  // We keep this function for compatibility with the store.
+  return true
 }
