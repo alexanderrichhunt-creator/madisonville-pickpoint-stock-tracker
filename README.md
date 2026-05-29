@@ -70,8 +70,8 @@ This project was designed for the same Render + Neon stack used in prior interna
 
 1. Push this repo to GitHub.
 2. On Render: New → Web Service → connect the GitHub repo.
-3. Build Command: `npm install && npx prisma generate && npm run build`
-4. Start Command: `npm start`
+3. Build Command: `npm ci && npx prisma generate && npx prisma db push && npm run build`
+4. Start Command: `npm run start -- -p $PORT`
 5. Add the environment variables above (especially the real Neon DATABASE_URL and a strong NEXTAUTH_SECRET).
 6. Deploy.
 
