@@ -183,8 +183,9 @@ export function InventoryProvider({ children }: { children: React.ReactNode }) {
           return true;
         }
         return false;
-      } catch (error) {
-        toast.error("Failed to dispense medication.");
+      } catch (error: any) {
+        const msg = error?.message || "Failed to dispense medication.";
+        toast.error(msg.length > 120 ? msg.substring(0, 120) + "..." : msg);
         return false;
       }
     },
@@ -205,7 +206,8 @@ export function InventoryProvider({ children }: { children: React.ReactNode }) {
         }
         return false;
       } catch (error: any) {
-        toast.error(error.message || "Failed to add medication.");
+        const msg = error?.message || "Failed to add medication.";
+        toast.error(msg.length > 120 ? msg.substring(0, 120) + "..." : msg);
         return false;
       }
     },
@@ -223,8 +225,9 @@ export function InventoryProvider({ children }: { children: React.ReactNode }) {
           return true;
         }
         return false;
-      } catch (error) {
-        toast.error("Failed to update medication.");
+      } catch (error: any) {
+        const msg = error?.message || "Failed to update medication.";
+        toast.error(msg.length > 120 ? msg.substring(0, 120) + "..." : msg);
         return false;
       }
     },
@@ -390,8 +393,9 @@ export function InventoryProvider({ children }: { children: React.ReactNode }) {
         };
         setSuggestions((prev) => [newSuggestion, ...prev]);
         toast.success("Suggestion submitted. Thank you!");
-      } catch (error) {
-        toast.error("Failed to submit suggestion.");
+      } catch (error: any) {
+        const msg = error?.message || "Failed to submit suggestion.";
+        toast.error(msg.length > 120 ? msg.substring(0, 120) + "..." : msg);
       }
     },
     []
