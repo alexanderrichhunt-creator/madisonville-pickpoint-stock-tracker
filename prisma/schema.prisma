@@ -3,6 +3,7 @@
 
 generator client {
   provider = "prisma-client-js"
+  engineType = "library"   // Use the traditional Node.js engine (not the new "client" WASM engine)
 }
 
 datasource db {
