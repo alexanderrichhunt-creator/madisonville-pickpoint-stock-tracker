@@ -49,11 +49,31 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
           // We support either "admin" as username or the full email
           const email = username.includes("@") ? username : "admin@pickpoint.local"
 
-          const user = await prisma.user.findUnique({
+          let user = await prisma.user.findUnique({
             where: { email },
           })
 
-          if (!user) return null
+          // Self-healing bootstrap: If no admin user exists yet but they are using the correct initial password,
+          // create the admin user on the fly. This makes first deploy much more reliable.
+          if (!user) {
+            const initialPassword = process.env.ADMIN_INITIAL_PASSWORD || "mpp2026"
+            if (password === initialPassword) {
+              try {
+                user = await prisma.user.create({
+                  data: {
+                    email,
+                    name: "Administrator",
+                    isAdmin: true,
+                  },
+                })
+              } catch (createError) {
+                console.error("Failed to auto-create admin user during bootstrap login:", createError)
+                return null
+              }
+            } else {
+              return null
+            }
+          }
 
           // For credentials we store a password hash in a custom way.
           // Since the core User model doesn't have password field (Auth.js standard),

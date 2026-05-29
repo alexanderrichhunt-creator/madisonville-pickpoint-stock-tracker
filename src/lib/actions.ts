@@ -191,19 +191,24 @@ export async function addSuggestion(data: {
   notes?: string
   requestedBy?: string
 }) {
-  await prisma.suggestion.create({
-    data: {
-      name: data.name,
-      strength: data.strength,
-      ndc: data.ndc || null,
-      suggestedCount: data.suggestedCount || null,
-      notes: data.notes || null,
-      requestedBy: data.requestedBy || null,
-    },
-  })
+  try {
+    await prisma.suggestion.create({
+      data: {
+        name: data.name,
+        strength: data.strength,
+        ndc: data.ndc || null,
+        suggestedCount: data.suggestedCount || null,
+        notes: data.notes || null,
+        requestedBy: data.requestedBy || null,
+      },
+    })
 
-  revalidatePath('/')
-  return true
+    revalidatePath('/')
+    return true
+  } catch (error) {
+    console.error("addSuggestion failed:", error)
+    throw error // rethrow so the client shows the failure toast
+  }
 }
 
 export async function deleteSuggestion(id: string) {
@@ -330,17 +335,23 @@ async function seedDatabaseFromOriginalData() {
  * Used by the auto-seed path.
  */
 export async function ensureAdminUser() {
-  const adminEmail = "admin@pickpoint.local"
-  const existing = await prisma.user.findUnique({ where: { email: adminEmail } })
-  if (!existing) {
-    await prisma.user.create({
-      data: {
-        email: adminEmail,
-        name: "Administrator",
-        isAdmin: true,
-      },
-    })
-    return true
+  try {
+    const adminEmail = "admin@pickpoint.local"
+    const existing = await prisma.user.findUnique({ where: { email: adminEmail } })
+    if (!existing) {
+      await prisma.user.create({
+        data: {
+          email: adminEmail,
+          name: "Administrator",
+          isAdmin: true,
+        },
+      })
+      console.log("Auto-created missing admin user during load")
+      return true
+    }
+    return false
+  } catch (error) {
+    console.error("ensureAdminUser failed:", error)
+    return false
   }
-  return false
 }
