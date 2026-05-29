@@ -4,7 +4,7 @@ services:
     env: node
     region: oregon  # Change to ohio if your database is closer to there
     plan: free      # Change to starter or higher if you upgrade later
-    buildCommand: PRISMA_CLIENT_ENGINE_TYPE=library rm -rf node_modules && npm ci && rm -rf node_modules/.prisma node_modules/@prisma/client && npx prisma generate && npx prisma db push && npm run build
+    buildCommand: npm cache clean --force && PRISMA_CLIENT_ENGINE_TYPE=library rm -rf node_modules && npm ci && rm -rf node_modules/.prisma && npx prisma generate && npx prisma db push && npm run build
     startCommand: npm run start -- -p $PORT
     autoDeploy: true
     envVars:
