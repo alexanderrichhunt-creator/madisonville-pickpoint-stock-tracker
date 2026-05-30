@@ -10,7 +10,7 @@ const EXPORT_COLUMNS = [
   "Package Size",
   "Class",
   "Categories",
-  "Current Qty",
+  "Qty",
   "Low Qty",
   "High Qty",
   "Machine",

@@ -129,10 +129,10 @@ export function InventoryTable({ medications }: InventoryTableProps) {
                 <TableHead>
                   <SortButton column="category">Category</SortButton>
                 </TableHead>
-                <TableHead>
-                  <SortButton column="qty">Current Qty</SortButton>
+                <TableHead className="w-[72px] whitespace-nowrap">
+                  <SortButton column="qty">Qty</SortButton>
                 </TableHead>
-                <TableHead className="min-w-[160px]">
+                <TableHead className="min-w-[168px] whitespace-nowrap">
                   <SortButton column="drawer">Location</SortButton>
                 </TableHead>
                 <TableHead className="sticky right-0 z-10 min-w-[260px] bg-card text-right shadow-[-4px_0_8px_-4px_rgba(0,0,0,0.08)]">
@@ -181,8 +181,8 @@ export function InventoryTable({ medications }: InventoryTableProps) {
                           )}
                         </div>
                       </TableCell>
-                      <TableCell>
-                        <div className="flex items-center gap-2">
+                      <TableCell className="whitespace-nowrap">
+                        <div className="flex items-center gap-1.5">
                           <span className="font-semibold">{med.qty}</span>
                           {status === "low" && (
                             <Badge variant="low">Low</Badge>
@@ -192,7 +192,7 @@ export function InventoryTable({ medications }: InventoryTableProps) {
                           )}
                         </div>
                       </TableCell>
-                      <TableCell className="text-sm text-muted-foreground">
+                      <TableCell className="whitespace-nowrap text-sm text-muted-foreground">
                         {formatLocation(med)}
                       </TableCell>
                       <TableCell className="sticky right-0 z-10 whitespace-nowrap bg-card p-2 shadow-[-4px_0_8px_-4px_rgba(0,0,0,0.08)]">
