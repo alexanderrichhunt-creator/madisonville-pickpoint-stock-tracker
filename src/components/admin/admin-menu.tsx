@@ -8,6 +8,7 @@ import {
   RotateCcw,
   Upload,
 } from "lucide-react";
+import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import {
   Dialog,
@@ -39,6 +40,7 @@ import {
   MedicationFormData,
 } from "@/components/inventory/medication-form";
 import { useInventoryStore } from "@/hooks/use-inventory-store";
+import { parseInventoryFile } from "@/lib/inventory-io";
 
 export function AdminMenu() {
   const {
@@ -88,18 +90,17 @@ export function AdminMenu() {
 
   const handleImport = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
-    if (!file) return;
-    const reader = new FileReader();
-    reader.onload = async (event) => {
-      try {
-        const data = JSON.parse(event.target?.result as string);
-        await importInventory(data);
-      } catch {
-        await importInventory(null);
-      }
-    };
-    reader.readAsText(file);
     e.target.value = "";
+    if (!file) return;
+
+    try {
+      const data = await parseInventoryFile(file);
+      await importInventory(data);
+    } catch (error: unknown) {
+      const message =
+        error instanceof Error ? error.message : "Could not import inventory file.";
+      toast.error(message);
+    }
   };
 
   return (
@@ -119,12 +120,12 @@ export function AdminMenu() {
 
           <DropdownMenuItem onClick={exportInventory}>
             <Download className="mr-2 h-4 w-4" aria-hidden="true" />
-            Export Inventory
+            Export JSON Backup
           </DropdownMenuItem>
 
           <DropdownMenuItem onClick={() => fileInputRef.current?.click()}>
             <Upload className="mr-2 h-4 w-4" aria-hidden="true" />
-            Import Inventory
+            Import from File
           </DropdownMenuItem>
 
           <DropdownMenuSeparator />
@@ -172,7 +173,7 @@ export function AdminMenu() {
       <input
         ref={fileInputRef}
         type="file"
-        accept=".json,application/json"
+        accept=".xlsx,.xls,.csv,.json,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet,text/csv,application/json"
         className="hidden"
         onChange={handleImport}
         aria-hidden="true"

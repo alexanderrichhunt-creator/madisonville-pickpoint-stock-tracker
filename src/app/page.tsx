@@ -13,6 +13,7 @@ import { InventoryTable } from "@/components/inventory/inventory-table";
 import { ActivityLog } from "@/components/activity/activity-log";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { useInventoryStore } from "@/hooks/use-inventory-store";
+import { InventoryImportExport } from "@/components/admin/inventory-import-export";
 import { MachineCapacity } from "@/components/layout/machine-capacity";
 import { SuggestionForm } from "@/components/suggestions/suggestion-form";
 import { SuggestionsList } from "@/components/suggestions/suggestions-list";
@@ -81,6 +82,7 @@ export default function HomePage() {
             <StatsCards stats={stats} />
             <MachineCapacity />
             <SearchFilters filters={filters} onChange={setFilters} />
+            {isAuthenticatedAdmin && <InventoryImportExport />}
             <LowStockAlerts items={lowStockItems} />
             <InventoryTable medications={filteredMeds} />
             <p className="text-sm text-muted-foreground">

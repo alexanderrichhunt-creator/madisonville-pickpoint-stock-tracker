@@ -135,7 +135,7 @@ export function InventoryTable({ medications }: InventoryTableProps) {
                 <TableHead className="min-w-[160px]">
                   <SortButton column="drawer">Location</SortButton>
                 </TableHead>
-                <TableHead className="min-w-[200px]">Actions</TableHead>
+                <TableHead className="min-w-[240px] text-right">Actions</TableHead>
               </TableRow>
             </TableHeader>
             <TableBody>
@@ -193,47 +193,53 @@ export function InventoryTable({ medications }: InventoryTableProps) {
                       <TableCell className="text-sm text-muted-foreground">
                         {formatLocation(med)}
                       </TableCell>
-                      <TableCell>
-                        <div className="flex flex-wrap gap-1.5">
+                      <TableCell className="whitespace-nowrap p-2">
+                        <div className="flex items-center justify-end gap-0.5 flex-nowrap">
                           <Button
                             variant="ghost"
-                            size="sm"
+                            size="icon"
+                            className="h-8 w-8 shrink-0"
                             onClick={() => copyRx(med)}
                             aria-label={`Copy Rx text for ${med.name}`}
+                            title="Copy Rx"
                           >
                             <Copy className="h-3.5 w-3.5" aria-hidden="true" />
-                            <span className="hidden sm:inline">Copy Rx</span>
                           </Button>
                           {isAdmin && (
                             <Button
                               size="sm"
+                              className="h-8 shrink-0 px-2.5"
                               onClick={() => setDispenseMed(med)}
                               disabled={med.qty === 0}
                               aria-label={`Dispense ${med.name}`}
                             >
                               <Pill className="h-3.5 w-3.5" aria-hidden="true" />
-                              Dispense
+                              <span className="ml-1">Dispense</span>
                             </Button>
                           )}
                           {isAdmin && (
-                            <>
+                            <div className="ml-0.5 flex shrink-0 items-center gap-0.5 border-l pl-1">
                               <Button
                                 variant="outline"
-                                size="sm"
+                                size="icon"
+                                className="h-8 w-8 shrink-0"
                                 onClick={() => setEditMed(med)}
                                 aria-label={`Edit ${med.name}`}
+                                title="Edit"
                               >
                                 <Pencil className="h-3.5 w-3.5" aria-hidden="true" />
                               </Button>
                               <Button
                                 variant="outline"
-                                size="sm"
+                                size="icon"
+                                className="h-8 w-8 shrink-0"
                                 onClick={() => setDeleteMed(med)}
                                 aria-label={`Delete ${med.name}`}
+                                title="Delete"
                               >
                                 <Trash2 className="h-3.5 w-3.5 text-destructive" aria-hidden="true" />
                               </Button>
-                            </>
+                            </div>
                           )}
                         </div>
                       </TableCell>
