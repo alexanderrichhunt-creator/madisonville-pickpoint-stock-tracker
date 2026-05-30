@@ -11,13 +11,18 @@ import {
 import { toast } from "sonner";
 import { SEED_MEDICATIONS, SEED_METADATA } from "@/data/seed-data";
 import { generateMedicationId, isValidMedication } from "@/lib/inventory-utils";
+import {
+  loadLocalInventory,
+  resetLocalInventory,
+  saveLocalActivity,
+  saveLocalMedications,
+  saveLocalSuggestions,
+  saveLocalTotalSlots,
+} from "@/lib/local-storage-backend";
+import { isLocalMode } from "@/lib/runtime-mode";
 import { useSession, signIn as nextAuthSignIn, signOut as nextAuthSignOut } from "next-auth/react";
 // ADMIN_PIN and STORAGE_KEYS kept only for reference / migration comments (no longer used)
 import {
-  getMedications,
-  getActivityLog,
-  getSuggestions,
-  getAppSettings,
   addMedication as serverAddMedication,
   updateMedication as serverUpdateMedication,
   deleteMedication as serverDeleteMedication,
@@ -28,12 +33,14 @@ import {
   importInventory as serverImportInventory,
   resetToSeed as serverResetToSeed,
   seedDatabaseIfEmpty as serverSeedDatabaseIfEmpty,
-  ensureAdminUser as serverEnsureAdminUser,
+  getSharedBackendStatus,
+  refreshInventoryData,
+  ensureAdminUser,
 } from "@/lib/actions";
 import { ActivityEntry } from "@/types/activity";
 import { Medication } from "@/types/medication";
 import { MedicationSuggestion } from "@/types/suggestion";
-import { isDegradedMode as prismaIsDegradedMode } from "@/lib/prisma";
+
 
 interface InventoryContextValue {
   medications: Medication[];
@@ -75,8 +82,10 @@ interface InventoryContextValue {
   loginAdmin: (username: string, password: string) => Promise<boolean>;
   logout: () => Promise<void>;
 
-  // Degraded mode (when Prisma client has the wrong engine type)
-  isDegradedMode: boolean;
+  sharedConnected: boolean | null;
+  sharedError: string | null;
+  isRefreshing: boolean;
+  refreshFromServer: () => Promise<void>;
 }
 
 const InventoryContext = createContext<InventoryContextValue | null>(null);
@@ -111,41 +120,98 @@ export function InventoryProvider({ children }: { children: React.ReactNode }) {
 
   // For converting a suggestion into a real medication (admin flow)
   const [suggestionForAdding, setSuggestionForAdding] = useState<MedicationSuggestion | null>(null);
+  const [sharedConnected, setSharedConnected] = useState<boolean | null>(
+    isLocalMode ? true : null
+  );
+  const [sharedError, setSharedError] = useState<string | null>(null);
+  const [isRefreshing, setIsRefreshing] = useState(false);
+
+  const applyRemoteData = useCallback(
+    (data: {
+      medications: Medication[];
+      activity: ActivityEntry[];
+      suggestions: MedicationSuggestion[];
+      totalSlots: number;
+      dataAsOf: string;
+    }) => {
+      setMedications(data.medications);
+      setActivity(data.activity);
+      setSuggestions(data.suggestions);
+      setTotalSlots(data.totalSlots);
+      setLastUpdated(data.dataAsOf);
+    },
+    []
+  );
+
+  const refreshFromServer = useCallback(async () => {
+    if (isLocalMode) return;
+
+    setIsRefreshing(true);
+    try {
+      const status = await getSharedBackendStatus();
+      setSharedConnected(status.connected);
+      setSharedError(status.error ?? null);
+
+      if (!status.connected) {
+        setMedications([]);
+        setActivity([]);
+        setSuggestions([]);
+        return;
+      }
+
+      await ensureAdminUser();
+      const data = await refreshInventoryData();
+      if (data) {
+        applyRemoteData(data);
+      }
+    } catch (err) {
+      const message =
+        err instanceof Error ? err.message : "Failed to refresh shared inventory.";
+      setSharedConnected(false);
+      setSharedError(message);
+      toast.error(message);
+    } finally {
+      setIsRefreshing(false);
+    }
+  }, [applyRemoteData]);
 
   useEffect(() => {
     async function loadFromDatabase() {
-      try {
-        // Auto-seed on first run / empty DB (works for anyone; safe no-op if data exists)
-        await serverSeedDatabaseIfEmpty();
-        await serverEnsureAdminUser();
-
-        const [meds, act, sugg, settings] = await Promise.all([
-          getMedications(),
-          getActivityLog(),
-          getSuggestions(),
-          getAppSettings(),
-        ]);
-
-        setMedications(meds as any);
-        setActivity(act as any);
-        setSuggestions(sugg as any);
-        setTotalSlots(settings.totalSlots);
-        setLastUpdated(settings.dataAsOf);
-      } catch (err) {
-        console.error("Failed to load from database, falling back to seed data:", err);
-        // Fallback to seed data if DB is unavailable
-        setMedications(SEED_MEDICATIONS);
-        setActivity([]);
-        setSuggestions([]);
-        setTotalSlots(90);
-        setLastUpdated(SEED_METADATA.dataAsOf);
+      if (isLocalMode) {
+        const local = loadLocalInventory();
+        setMedications(local.medications);
+        setActivity(local.activity);
+        setSuggestions(local.suggestions);
+        setTotalSlots(local.totalSlots);
+        setLastUpdated(local.lastUpdated);
+        setSharedConnected(true);
+        setSharedError(null);
+        setIsHydrated(true);
+        return;
       }
 
+      await refreshFromServer();
       setIsHydrated(true);
     }
 
     loadFromDatabase();
-  }, []);
+  }, [refreshFromServer]);
+
+  useEffect(() => {
+    if (isLocalMode) return;
+
+    const interval = window.setInterval(() => {
+      refreshFromServer();
+    }, 30_000);
+
+    const onFocus = () => refreshFromServer();
+    window.addEventListener("focus", onFocus);
+
+    return () => {
+      window.clearInterval(interval);
+      window.removeEventListener("focus", onFocus);
+    };
+  }, [refreshFromServer]);
 
   // LocalStorage persistence disabled — data is now stored in the database via Server Actions
 
@@ -155,106 +221,128 @@ export function InventoryProvider({ children }: { children: React.ReactNode }) {
 
   const dispense = useCallback(
     async (id: string, qty: number): Promise<boolean> => {
-      if (!isAdmin) {
-        toast.error("Dispensing is restricted to logged-in administrators only.");
-        return false;
+      const med = medications.find((m) => m.id === id);
+      if (!med || qty <= 0 || qty > med.qty) return false;
+
+      const remainingQty = med.qty - qty;
+      const nextMeds = medications.map((m) =>
+        m.id === id ? { ...m, qty: remainingQty } : m
+      );
+      const entry: ActivityEntry = {
+        id: crypto.randomUUID(),
+        timestamp: new Date().toISOString(),
+        medicationId: id,
+        drugName: med.name,
+        ndc: med.ndc,
+        qtyDispensed: qty,
+        remainingQty,
+      };
+      const nextActivity = [entry, ...activity];
+
+      if (isLocalMode) {
+        setMedications(nextMeds);
+        setActivity(nextActivity);
+        updateTimestamp();
+        saveLocalMedications(nextMeds);
+        saveLocalActivity(nextActivity);
+        toast.success(`Dispensed ${qty}× ${med.name}. ${remainingQty} remaining.`);
+        return true;
       }
 
       try {
-        const success = await serverDispense(id, qty);
-        if (success) {
-          // Optimistic update
-          const med = medications.find((m) => m.id === id);
-          if (med) {
-            const remainingQty = Math.max(0, med.qty - qty);
-            setMedications((prev) =>
-              prev.map((m) => (m.id === id ? { ...m, qty: remainingQty } : m))
-            );
-
-            const entry: ActivityEntry = {
-              id: crypto.randomUUID(),
-              timestamp: new Date().toISOString(),
-              medicationId: id,
-              drugName: med.name,
-              ndc: med.ndc,
-              qtyDispensed: qty,
-              remainingQty,
-            };
-            setActivity((prev) => [entry, ...prev]);
-          }
-
-          toast.success(`Dispensed ${qty}× ${med?.name}.`);
-          return true;
-        }
-        return false;
-      } catch (error: any) {
-        const msg = error?.message || "Failed to dispense medication.";
+        await serverDispense(id, qty);
+        await refreshFromServer();
+        toast.success(`Dispensed ${qty}× ${med.name}. ${remainingQty} remaining.`);
+        return true;
+      } catch (error: unknown) {
+        const msg = error instanceof Error ? error.message : "Failed to dispense medication.";
         toast.error(msg.length > 120 ? msg.substring(0, 120) + "..." : msg);
         return false;
       }
     },
-    [medications, isAdmin]
+    [medications, activity, updateTimestamp, refreshFromServer]
   );
 
   const addMedication = useCallback(
     async (med: Omit<Medication, "id">): Promise<boolean> => {
-      try {
-        const success = await serverAddMedication(med as any);
-        if (success) {
-          // Optimistic update
-          const id = generateMedicationId(med.ndc, med.machine, med.drawer, med.row);
-          setMedications((prev) => [...prev, { ...med, id } as Medication]);
-          updateTimestamp();
-          toast.success("Medication added.");
-          return true;
-        }
+      const id = generateMedicationId(med.ndc, med.machine, med.drawer, med.row);
+      if (medications.some((m) => m.id === id)) {
+        toast.error("A medication with this NDC and location already exists.");
         return false;
-      } catch (error: any) {
-        const msg = error?.message || "Failed to add medication.";
+      }
+
+      const newMed = { ...med, id } as Medication;
+
+      if (isLocalMode) {
+        const next = [...medications, newMed];
+        setMedications(next);
+        updateTimestamp();
+        saveLocalMedications(next);
+        toast.success("Medication added.");
+        return true;
+      }
+
+      try {
+        await serverAddMedication(med as Medication);
+        await refreshFromServer();
+        toast.success("Medication added.");
+        return true;
+      } catch (error: unknown) {
+        const msg = error instanceof Error ? error.message : "Failed to add medication.";
         toast.error(msg.length > 120 ? msg.substring(0, 120) + "..." : msg);
         return false;
       }
     },
-    [updateTimestamp]
+    [medications, updateTimestamp, refreshFromServer]
   );
 
   const updateMedication = useCallback(
     async (med: Medication): Promise<boolean> => {
+      if (isLocalMode) {
+        const next = medications.map((m) => (m.id === med.id ? med : m));
+        setMedications(next);
+        updateTimestamp();
+        saveLocalMedications(next);
+        toast.success("Medication updated.");
+        return true;
+      }
+
       try {
-        const success = await serverUpdateMedication(med as any);
-        if (success) {
-          setMedications((prev) => prev.map((m) => (m.id === med.id ? med : m)));
-          updateTimestamp();
-          toast.success("Medication updated.");
-          return true;
-        }
-        return false;
-      } catch (error: any) {
-        const msg = error?.message || "Failed to update medication.";
+        await serverUpdateMedication(med as Medication);
+        await refreshFromServer();
+        toast.success("Medication updated.");
+        return true;
+      } catch (error: unknown) {
+        const msg = error instanceof Error ? error.message : "Failed to update medication.";
         toast.error(msg.length > 120 ? msg.substring(0, 120) + "..." : msg);
         return false;
       }
     },
-    [updateTimestamp]
+    [medications, updateTimestamp, refreshFromServer]
   );
 
   const deleteMedication = useCallback(
     async (id: string): Promise<boolean> => {
+      if (isLocalMode) {
+        const next = medications.filter((m) => m.id !== id);
+        setMedications(next);
+        updateTimestamp();
+        saveLocalMedications(next);
+        toast.success("Medication deleted.");
+        return true;
+      }
+
       try {
-        const success = await serverDeleteMedication(id);
-        if (success) {
-          setMedications((prev) => prev.filter((m) => m.id !== id));
-          updateTimestamp();
-          toast.success("Medication deleted.");
-          return true;
-        }
-        return false;
-      } catch (error) {
+        await serverDeleteMedication(id);
+        await refreshFromServer();
+        toast.success("Medication deleted.");
+        return true;
+      } catch {
         toast.error("Failed to delete medication.");
         return false;
       }
     },
-    [updateTimestamp]
+    [medications, updateTimestamp, refreshFromServer]
   );
 
   const importInventory = useCallback(
@@ -263,19 +351,46 @@ export function InventoryProvider({ children }: { children: React.ReactNode }) {
         toast.error("Invalid inventory file format.");
         return false;
       }
-      try {
-        const success = await serverImportInventory(data as any);
-        if (success) {
-          // Re-fetch fresh data after bulk import
-          const freshMeds = await getMedications();
-          setMedications(freshMeds as any);
-          updateTimestamp();
-          toast.success(`Imported ${data.length} medications.`);
-          return true;
-        }
+
+      if (isLocalMode) {
+        const normalized = (data as Record<string, unknown>[]).map((item) => ({
+          id: String(item.id ?? ""),
+          ndc: String(item.ndc ?? ""),
+          name: String(item.name ?? ""),
+          strength: String(item.strength ?? ""),
+          size: String(item.size ?? ""),
+          class: item.class === "Schedule III-V" ? "Schedule III-V" : "Uncontrolled",
+          categories: Array.isArray(item.categories) ? item.categories : [],
+          qty: Number(item.qty ?? 0),
+          lowQty: Number(item.lowQty ?? 10),
+          highQty: Number(item.highQty ?? 10),
+          machine: Number(item.machine ?? 1),
+          drawer: String(item.drawer ?? "A"),
+          row: Number(item.row ?? 1),
+          cost: Number(item.cost ?? 0),
+        })) as Medication[];
+        setMedications(normalized);
+        setActivity([]);
+        updateTimestamp();
+        saveLocalMedications(normalized);
+        saveLocalActivity([]);
+        toast.success(`Imported ${normalized.length} medications.`);
+        return true;
+      }
+
+      if (!data.every(isValidMedication)) {
+        toast.error("Inventory file contains invalid medication records.");
         return false;
-      } catch (error: any) {
-        toast.error(error.message || "Failed to import inventory.");
+      }
+
+      try {
+        await serverImportInventory(data as Medication[]);
+        await refreshFromServer();
+        toast.success(`Imported ${data.length} medications.`);
+        return true;
+      } catch (error: unknown) {
+        const msg = error instanceof Error ? error.message : "Failed to import inventory.";
+        toast.error(msg);
         return false;
       }
     },
@@ -298,38 +413,52 @@ export function InventoryProvider({ children }: { children: React.ReactNode }) {
   }, [medications]);
 
   const resetToSeed = useCallback(async (): Promise<boolean> => {
+    if (isLocalMode) {
+      resetLocalInventory();
+      setMedications(SEED_MEDICATIONS);
+      setActivity([]);
+      setSuggestions([]);
+      setTotalSlots(90);
+      setLastUpdated(SEED_METADATA.dataAsOf);
+      toast.success("Inventory reset to original PDF data.");
+      return true;
+    }
+
     try {
-      const success = await serverResetToSeed();
-      if (success) {
-        const freshMeds = await getMedications();
-        setMedications(freshMeds.length > 0 ? (freshMeds as any) : SEED_MEDICATIONS);
-        setActivity([]);
-        setLastUpdated(SEED_METADATA.dataAsOf);
-        toast.success("Inventory reset to original PDF data.");
-        return true;
-      }
-      return false;
-    } catch (error) {
+      await serverResetToSeed();
+      await refreshFromServer();
+      toast.success("Inventory reset to original PDF data.");
+      return true;
+    } catch {
       toast.error("Failed to reset inventory.");
       return false;
     }
-  }, []);
+  }, [refreshFromServer]);
 
   const seedDatabaseIfEmpty = useCallback(async (): Promise<boolean> => {
+    if (isLocalMode) {
+      if (medications.length === 0) {
+        resetLocalInventory();
+        setMedications(SEED_MEDICATIONS);
+        toast.success("Inventory initialized with original medications.");
+        return true;
+      }
+      return false;
+    }
+
     try {
       const seeded = await serverSeedDatabaseIfEmpty();
       if (seeded) {
-        const freshMeds = await getMedications();
-        setMedications(freshMeds as any);
+        await refreshFromServer();
         toast.success("Database initialized with original medications.");
         return true;
       }
       return false;
-    } catch (error) {
+    } catch {
       toast.error("Failed to initialize database.");
       return false;
     }
-  }, []);
+  }, [medications.length, refreshFromServer]);
 
   // Real authentication using Auth.js Credentials provider (replaces PIN entirely)
   const loginAdmin = useCallback(async (username: string, password: string): Promise<boolean> => {
@@ -375,45 +504,65 @@ export function InventoryProvider({ children }: { children: React.ReactNode }) {
       toast.error(`Total slots cannot be lower than currently occupied slots (${occupiedSlots}).`);
       return;
     }
+    if (isLocalMode) {
+      setTotalSlots(newTotal);
+      saveLocalTotalSlots(newTotal);
+      toast.success(`Machine capacity updated to ${newTotal} slots.`);
+      return;
+    }
     try {
       await serverUpdateTotalSlots(newTotal);
-      setTotalSlots(newTotal);
+      await refreshFromServer();
       toast.success(`Machine capacity updated to ${newTotal} slots.`);
-    } catch (error) {
+    } catch {
       toast.error("Failed to update total slots.");
     }
-  }, [occupiedSlots]);
+  }, [occupiedSlots, refreshFromServer]);
 
-  // Suggestion methods
   const addSuggestion = useCallback(
     async (suggestion: Omit<MedicationSuggestion, "id" | "requestedAt">) => {
+      const newSuggestion: MedicationSuggestion = {
+        ...suggestion,
+        id: crypto.randomUUID(),
+        requestedAt: new Date().toISOString(),
+      };
+
+      if (isLocalMode) {
+        const next = [newSuggestion, ...suggestions];
+        setSuggestions(next);
+        saveLocalSuggestions(next);
+        toast.success("Suggestion submitted. Thank you!");
+        return;
+      }
+
       try {
         await serverAddSuggestion(suggestion);
-        // Optimistic update
-        const newSuggestion: MedicationSuggestion = {
-          ...suggestion,
-          id: crypto.randomUUID(),
-          requestedAt: new Date().toISOString(),
-        };
-        setSuggestions((prev) => [newSuggestion, ...prev]);
+        await refreshFromServer();
         toast.success("Suggestion submitted. Thank you!");
-      } catch (error: any) {
-        const msg = error?.message || "Failed to submit suggestion.";
+      } catch (error: unknown) {
+        const msg = error instanceof Error ? error.message : "Failed to submit suggestion.";
         toast.error(msg.length > 120 ? msg.substring(0, 120) + "..." : msg);
       }
     },
-    []
+    [refreshFromServer]
   );
 
   const deleteSuggestion = useCallback(async (id: string) => {
+    if (isLocalMode) {
+      const next = suggestions.filter((s) => s.id !== id);
+      setSuggestions(next);
+      saveLocalSuggestions(next);
+      toast.success("Suggestion removed.");
+      return;
+    }
     try {
       await serverDeleteSuggestion(id);
-      setSuggestions((prev) => prev.filter((s) => s.id !== id));
+      await refreshFromServer();
       toast.success("Suggestion removed.");
-    } catch (error) {
+    } catch {
       toast.error("Failed to remove suggestion.");
     }
-  }, []);
+  }, [refreshFromServer]);
 
   const startAddingFromSuggestion = useCallback((suggestion: MedicationSuggestion) => {
     setSuggestionForAdding(suggestion);
@@ -478,7 +627,10 @@ export function InventoryProvider({ children }: { children: React.ReactNode }) {
       loginAdmin,
       logout,
 
-      isDegradedMode: prismaIsDegradedMode,
+      sharedConnected,
+      sharedError,
+      isRefreshing,
+      refreshFromServer,
     }),
     [
       medications,
@@ -509,7 +661,10 @@ export function InventoryProvider({ children }: { children: React.ReactNode }) {
       deleteSuggestion,
       startAddingFromSuggestion,
       clearSuggestionForAdding,
-      prismaIsDegradedMode,
+      sharedConnected,
+      sharedError,
+      isRefreshing,
+      refreshFromServer,
     ]
   );
 

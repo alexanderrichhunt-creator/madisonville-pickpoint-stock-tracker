@@ -1,0 +1,30 @@
+Madisonville PickPoint Stock Tracker — GET STARTED
+==================================================
+
+STEP 1: Install Node.js (one time only)
+   Go to https://nodejs.org and download the LTS version.
+   Run the installer with default settings.
+
+STEP 2: Start the app
+   Double-click:  START-APP.bat
+   (in this folder)
+
+STEP 3: Use the app
+   Your browser opens to http://localhost:3000
+   You will see all 69 medications from the April 2026 PDF.
+
+   To dispense: click "Dispense" on any row (no login needed in local mode).
+
+   For admin (add/edit/delete inventory):
+   - Click "Admin Login"
+   - Username: admin
+   - Password: mpp2026
+
+   To stop the server: close the black command window, or press Ctrl+C in it.
+
+NOTES
+   - Data is saved in your browser on this computer (local mode).
+   - For shared clinic access (everyone sees the same inventory), see DEPLOY-ONLINE.md.
+
+Clinic: Madisonville Family Medicine
+712 S. May St, Madisonville, TX 77864 | 936-348-3418

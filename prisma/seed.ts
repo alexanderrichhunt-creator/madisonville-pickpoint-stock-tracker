@@ -43,7 +43,7 @@ async function main() {
   await prisma.appSetting.createMany({
     data: [
       { key: 'total_slots', value: '90' },
-      { key: 'data_as_of', value: JSON.stringify(SEED_METADATA.dataAsOf) },
+      { key: 'data_as_of', value: SEED_METADATA.dataAsOf },
     ],
   })
 

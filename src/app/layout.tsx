@@ -3,7 +3,6 @@ import { Inter } from "next/font/google";
 import { Toaster } from "@/components/ui/sonner";
 import { SessionProvider } from "@/components/auth/session-provider";
 import { InventoryProvider } from "@/hooks/use-inventory-store";
-import { DegradedModeBanner } from "@/components/layout/degraded-mode-banner";
 import "./globals.css";
 
 export const dynamic = "force-dynamic";
@@ -31,7 +30,6 @@ export default function RootLayout({
       <body className={inter.className}>
         <SessionProvider>
           <InventoryProvider>
-            <DegradedModeBanner />
             {children}
             <Toaster richColors closeButton position="top-right" />
           </InventoryProvider>

@@ -1,16 +1,16 @@
 "use client";
 
-import { useInventoryStore } from "@/hooks/use-inventory-store";
+import { isLocalMode } from "@/lib/runtime-mode";
 
 export function DegradedModeBanner() {
-  const { isDegradedMode } = useInventoryStore();
+  if (isLocalMode) {
+    return (
+      <div className="border-b border-sky-200 bg-sky-50 px-4 py-2 text-center text-sm text-sky-900">
+        <strong>Local mode</strong> — data saves in this browser only. For shared clinic access,
+        deploy online (see <code>DEPLOY-ONLINE.md</code>).
+      </div>
+    );
+  }
 
-  if (!isDegradedMode) return null;
-
-  return (
-    <div className="bg-yellow-500 text-black px-4 py-2 text-center text-sm font-medium">
-      ⚠️ Running in <strong>degraded mode</strong> due to a Prisma configuration issue. 
-      Changes may not save properly. A fix is in progress.
-    </div>
-  );
+  return null;
 }

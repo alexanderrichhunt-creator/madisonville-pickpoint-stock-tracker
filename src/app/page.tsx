@@ -4,6 +4,7 @@ export const dynamic = "force-dynamic";
 
 import { useMemo, useState } from "react";
 import { Header } from "@/components/layout/header";
+import { SharedSyncBanner } from "@/components/layout/shared-sync-banner";
 import { Footer } from "@/components/layout/footer";
 import { StatsCards } from "@/components/inventory/stats-cards";
 import { SearchFilters } from "@/components/inventory/search-filters";
@@ -56,6 +57,7 @@ export default function HomePage() {
   return (
     <div className="flex min-h-screen flex-col">
       <Header />
+      <SharedSyncBanner />
 
       <main className="mx-auto w-full max-w-7xl flex-1 px-4 py-6 sm:px-6 lg:px-8">
         <Tabs defaultValue="inventory" className="space-y-6">

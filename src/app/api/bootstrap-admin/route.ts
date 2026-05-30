@@ -1,44 +1,56 @@
-import { NextRequest, NextResponse } from 'next/server';
-import bcrypt from 'bcryptjs';
-import { loadSettings, saveSettings } from '@/lib/google-sheets';
+import { NextResponse } from 'next/server'
+import bcrypt from 'bcryptjs'
+import {
+  seedDatabaseIfEmpty,
+  ensureAdminUser,
+  refreshInventoryData,
+} from '@/lib/actions'
+import { prisma } from '@/lib/prisma'
 
-/**
- * Bootstrap endpoint (Google Sheets version).
- * Visit this once after a fresh deploy to ensure the admin password hash exists.
- * 
- * Usage: https://your-app.onrender.com/api/bootstrap-admin
- * 
- * Safe to call multiple times.
- */
-export async function GET(req: NextRequest) {
+export async function GET() {
   try {
-    const initialPassword = process.env.ADMIN_INITIAL_PASSWORD || "mpp2026";
+    if (!process.env.DATABASE_URL) {
+      return NextResponse.json(
+        {
+          success: false,
+          error: 'DATABASE_URL is not set on Render.',
+          hint: 'Add your Neon Postgres connection string (same pattern as Branch Secretary Tool).',
+        },
+        { status: 500 }
+      )
+    }
 
-    const settings = await loadSettings();
-    const hashKey = "admin_password_hash";
+    await prisma.$queryRaw`SELECT 1`
+    const seeded = await seedDatabaseIfEmpty()
+    await ensureAdminUser()
 
-    // Create or update the bootstrap password hash in Settings sheet
-    const hash = await bcrypt.hash(initialPassword, 10);
-    settings[hashKey] = hash;
+    const initialPassword = process.env.ADMIN_INITIAL_PASSWORD || 'mpp2026'
+    const existingHash = await prisma.appSetting.findUnique({
+      where: { key: 'admin_password_hash' },
+    })
+    if (!existingHash) {
+      await prisma.appSetting.create({
+        data: {
+          key: 'admin_password_hash',
+          value: await bcrypt.hash(initialPassword, 10),
+        },
+      })
+    }
 
-    await saveSettings(settings);
+    const data = await refreshInventoryData()
 
     return NextResponse.json({
       success: true,
-      message: "Admin bootstrap complete. You can now log in.",
+      message: 'Bootstrap complete.',
+      seeded,
+      medicationCount: data?.medications.length ?? 0,
       login: {
-        username: "admin",
+        username: 'admin',
         password: initialPassword,
       },
-    });
-  } catch (error: any) {
-    console.error("Bootstrap admin error:", error);
-    return NextResponse.json(
-      { 
-        success: false, 
-        error: error.message || "Failed to bootstrap admin" 
-      },
-      { status: 500 }
-    );
+    })
+  } catch (error: unknown) {
+    const message = error instanceof Error ? error.message : 'Failed to bootstrap'
+    return NextResponse.json({ success: false, error: message }, { status: 500 })
   }
 }

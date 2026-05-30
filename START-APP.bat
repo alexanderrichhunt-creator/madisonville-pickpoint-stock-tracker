@@ -36,11 +36,15 @@ if not exist "node_modules\" (
 
 echo Starting the app...
 echo.
-echo  Open your browser to:  http://localhost:3000
+echo  Your browser will open to:  http://localhost:3000
 echo.
-echo  Press Ctrl+C to stop the server.
+echo  Admin login (optional):  admin  /  mpp2026
+echo  Dispense works without logging in.
+echo.
+echo  Press Ctrl+C in this window to stop the server.
 echo.
 
+timeout /t 2 /nobreak >nul
 start "" "http://localhost:3000"
 call npm run dev
 

@@ -1,73 +1,146 @@
 'use server'
 
 import { revalidatePath } from 'next/cache'
+import bcrypt from 'bcryptjs'
 import { SEED_MEDICATIONS, SEED_METADATA } from '@/data/seed-data'
 import { auth } from '@/auth'
+import { prisma } from '@/lib/prisma'
+import { mapActivity, mapMedication, mapSuggestion } from '@/lib/db-mappers'
 
-// Google Sheets service (replacing Prisma/Neon - modeled after the successful Madisonville Branch Talk Tracker pattern)
-import {
-  loadMedications,
-  saveMedications,
-  loadActivity,
-  saveActivity,
-  loadSuggestions,
-  saveSuggestions,
-  loadSettings,
-  saveSettings,
-} from '@/lib/google-sheets'
+function isSharedMode(): boolean {
+  return process.env.NEXT_PUBLIC_LOCAL_MODE !== 'true'
+}
+
+function requireDatabaseUrl(): string {
+  const url = process.env.DATABASE_URL
+  if (!url) {
+    throw new Error(
+      'DATABASE_URL is not set on the server. Add your Neon Postgres connection string on Render (same pattern as Branch Secretary Tool).'
+    )
+  }
+  return url
+}
 
 async function requireAdmin() {
   const session = await auth()
   if (!session?.user?.isAdmin) {
-    throw new Error("Unauthorized: Admin access required")
+    throw new Error('Unauthorized: Admin access required')
   }
   return session.user
 }
 
-export async function getMedications() {
-  try {
-    return await loadMedications()
-  } catch (error) {
-    console.error("Failed to load medications from Google Sheets, falling back to seed:", error)
-    return SEED_MEDICATIONS
+async function getSetting(key: string): Promise<string | undefined> {
+  const row = await prisma.appSetting.findUnique({ where: { key } })
+  return row?.value
+}
+
+async function setSetting(key: string, value: string) {
+  await prisma.appSetting.upsert({
+    where: { key },
+    create: { key, value },
+    update: { value },
+  })
+}
+
+async function loadAllSettings(): Promise<Record<string, string>> {
+  const rows = await prisma.appSetting.findMany()
+  return Object.fromEntries(rows.map((r) => [r.key, r.value]))
+}
+
+export type SharedBackendStatus = {
+  mode: 'local' | 'shared'
+  connected: boolean
+  error?: string
+  databaseConfigured: boolean
+}
+
+export async function getSharedBackendStatus(): Promise<SharedBackendStatus> {
+  if (!isSharedMode()) {
+    return { mode: 'local', connected: true, databaseConfigured: false }
   }
+
+  const databaseConfigured = Boolean(process.env.DATABASE_URL)
+  if (!databaseConfigured) {
+    return {
+      mode: 'shared',
+      connected: false,
+      databaseConfigured: false,
+      error:
+        'DATABASE_URL is not set on Render. Add your Neon Postgres connection string (same as Branch Secretary Tool).',
+    }
+  }
+
+  try {
+    requireDatabaseUrl()
+    await prisma.$queryRaw`SELECT 1`
+    return { mode: 'shared', connected: true, databaseConfigured: true }
+  } catch (error) {
+    return {
+      mode: 'shared',
+      connected: false,
+      databaseConfigured: true,
+      error:
+        error instanceof Error
+          ? error.message
+          : 'Cannot connect to Neon Postgres. Check DATABASE_URL on Render.',
+    }
+  }
+}
+
+export async function refreshInventoryData() {
+  if (!isSharedMode()) return null
+
+  requireDatabaseUrl()
+  await seedDatabaseIfEmpty()
+
+  const [medications, activity, suggestions, settings] = await Promise.all([
+    prisma.medication.findMany({ orderBy: { name: 'asc' } }),
+    prisma.activityLog.findMany({ orderBy: { timestamp: 'desc' } }),
+    prisma.suggestion.findMany({ orderBy: { requestedAt: 'desc' } }),
+    loadAllSettings(),
+  ])
+
+  return {
+    medications: medications.map(mapMedication),
+    activity: activity.map(mapActivity),
+    suggestions: suggestions.map(mapSuggestion),
+    totalSlots: parseInt(settings.total_slots || '90', 10),
+    dataAsOf: settings.data_as_of || SEED_METADATA.dataAsOf,
+  }
+}
+
+export async function getMedications() {
+  if (!isSharedMode()) return SEED_MEDICATIONS
+  requireDatabaseUrl()
+  const rows = await prisma.medication.findMany({ orderBy: { name: 'asc' } })
+  return rows.map(mapMedication)
 }
 
 export async function getActivityLog() {
-  try {
-    return await loadActivity()
-  } catch (error) {
-    console.error("Failed to load activity from Google Sheets:", error)
-    return []
-  }
+  if (!isSharedMode()) return []
+  requireDatabaseUrl()
+  const rows = await prisma.activityLog.findMany({ orderBy: { timestamp: 'desc' } })
+  return rows.map(mapActivity)
 }
 
 export async function getSuggestions() {
-  try {
-    return await loadSuggestions()
-  } catch (error) {
-    console.error("Failed to load suggestions from Google Sheets:", error)
-    return []
-  }
+  if (!isSharedMode()) return []
+  requireDatabaseUrl()
+  const rows = await prisma.suggestion.findMany({ orderBy: { requestedAt: 'desc' } })
+  return rows.map(mapSuggestion)
 }
 
 export async function getAppSettings() {
-  try {
-    const settings = await loadSettings()
-    return {
-      totalSlots: parseInt(settings.total_slots || '90'),
-      dataAsOf: settings.data_as_of || 'April 29, 2026',
-    }
-  } catch (error) {
-    console.error("Failed to load settings from Google Sheets:", error)
-    return {
-      totalSlots: 90,
-      dataAsOf: 'April 29, 2026',
-    }
+  if (!isSharedMode()) {
+    return { totalSlots: 90, dataAsOf: SEED_METADATA.dataAsOf }
+  }
+  requireDatabaseUrl()
+  const settings = await loadAllSettings()
+  return {
+    totalSlots: parseInt(settings.total_slots || '90', 10),
+    dataAsOf: settings.data_as_of || SEED_METADATA.dataAsOf,
   }
 }
-
-// ===== Mutations =====
 
 export async function addMedication(data: {
   ndc: string
@@ -85,32 +158,34 @@ export async function addMedication(data: {
   cost?: number
 }) {
   await requireAdmin()
+  requireDatabaseUrl()
+
   const id = `${data.ndc}-${data.machine}${data.drawer}${data.row}`
-
-  const meds = await loadMedications()
-  const existing = meds.find(m => m.id === id)
+  const existing = await prisma.medication.findUnique({ where: { id } })
   if (existing) {
-    throw new Error("A medication with this NDC and location already exists.")
+    throw new Error('A medication with this NDC and location already exists.')
   }
 
-  const newMed = {
-    id,
-    ndc: data.ndc,
-    name: data.name,
-    strength: data.strength,
-    size: data.size,
-    class: data.class,
-    categories: data.categories,
-    qty: data.qty,
-    lowQty: data.lowQty,
-    highQty: data.highQty,
-    machine: data.machine,
-    drawer: data.drawer,
-    row: data.row,
-    cost: data.cost ?? 0,
-  }
+  await prisma.medication.create({
+    data: {
+      id,
+      ndc: data.ndc,
+      name: data.name,
+      strength: data.strength,
+      size: data.size,
+      class: data.class,
+      categories: data.categories,
+      qty: data.qty,
+      lowQty: data.lowQty,
+      highQty: data.highQty,
+      machine: data.machine,
+      drawer: data.drawer,
+      row: data.row,
+      cost: data.cost ?? 0,
+    },
+  })
 
-  await saveMedications([...meds, newMed])
+  await setSetting('data_as_of', new Date().toISOString())
   revalidatePath('/')
   return true
 }
@@ -132,88 +207,80 @@ export async function updateMedication(data: {
   cost?: number
 }) {
   await requireAdmin()
-  const meds = await loadMedications()
-  const updatedMeds = meds.map(m => m.id === data.id ? {
-    ...m,
-    ndc: data.ndc,
-    name: data.name,
-    strength: data.strength,
-    size: data.size,
-    class: data.class,
-    categories: data.categories,
-    qty: data.qty,
-    lowQty: data.lowQty,
-    highQty: data.highQty,
-    machine: data.machine,
-    drawer: data.drawer,
-    row: data.row,
-    cost: data.cost ?? 0,
-  } : m)
+  requireDatabaseUrl()
 
-  await saveMedications(updatedMeds)
+  await prisma.medication.update({
+    where: { id: data.id },
+    data: {
+      ndc: data.ndc,
+      name: data.name,
+      strength: data.strength,
+      size: data.size,
+      class: data.class,
+      categories: data.categories,
+      qty: data.qty,
+      lowQty: data.lowQty,
+      highQty: data.highQty,
+      machine: data.machine,
+      drawer: data.drawer,
+      row: data.row,
+      cost: data.cost ?? 0,
+    },
+  })
+
+  await setSetting('data_as_of', new Date().toISOString())
   revalidatePath('/')
   return true
 }
 
 export async function deleteMedication(id: string) {
   await requireAdmin()
-  const meds = await loadMedications()
-  const filtered = meds.filter(m => m.id !== id)
-  await saveMedications(filtered)
+  requireDatabaseUrl()
+
+  await prisma.activityLog.deleteMany({ where: { medicationId: id } })
+  await prisma.medication.delete({ where: { id } })
+  await setSetting('data_as_of', new Date().toISOString())
   revalidatePath('/')
   return true
 }
 
-export async function dispense(medicationId: string, qty: number, dispensedBy?: string) {
-  const user = await requireAdmin()
+export async function dispense(medicationId: string, qty: number) {
+  requireDatabaseUrl()
 
-  try {
-    const meds = await loadMedications()
-    const med = meds.find(m => m.id === medicationId)
-    if (!med || qty <= 0 || qty > med.qty) {
-      return false
-    }
-
-    const remainingQty = med.qty - qty
-
-    const updatedMeds = meds.map(m =>
-      m.id === medicationId ? { ...m, qty: remainingQty } : m
-    )
-    await saveMedications(updatedMeds)
-
-    const activity = await loadActivity()
-    const newEntry = {
-      id: crypto.randomUUID(),
-      timestamp: new Date().toISOString(),
-      medicationId,
-      drugName: med.name,
-      ndc: med.ndc,
-      qtyDispensed: qty,
-      remainingQty,
-    }
-    await saveActivity([newEntry, ...activity])
-
-    revalidatePath('/')
-    return true
-  } catch (error) {
-    console.error("Failed to dispense:", error)
-    return false
+  const med = await prisma.medication.findUnique({ where: { id: medicationId } })
+  if (!med || qty <= 0 || qty > med.qty) {
+    throw new Error('Invalid dispense quantity or medication not found')
   }
+
+  const remainingQty = med.qty - qty
+
+  await prisma.$transaction([
+    prisma.medication.update({
+      where: { id: medicationId },
+      data: { qty: remainingQty },
+    }),
+    prisma.activityLog.create({
+      data: {
+        medicationId,
+        drugName: med.name,
+        ndc: med.ndc,
+        qtyDispensed: qty,
+        remainingQty,
+      },
+    }),
+  ])
+
+  await setSetting('data_as_of', new Date().toISOString())
+  revalidatePath('/')
+  return true
 }
 
 export async function updateTotalSlots(newTotal: number) {
   await requireAdmin()
-  try {
-    const settings = await loadSettings()
-    settings.total_slots = newTotal.toString()
-    await saveSettings(settings)
-
-    revalidatePath('/')
-    return true
-  } catch (error) {
-    console.error("Failed to update total slots:", error)
-    return false
-  }
+  requireDatabaseUrl()
+  await setSetting('total_slots', newTotal.toString())
+  revalidatePath('/')
+  return true
 }
 
 export async function addSuggestion(data: {
@@ -224,101 +291,154 @@ export async function addSuggestion(data: {
   notes?: string
   requestedBy?: string
 }) {
-  try {
-    const suggestions = await loadSuggestions()
-    const newSuggestion = {
-      id: crypto.randomUUID(),
+  requireDatabaseUrl()
+  await prisma.suggestion.create({
+    data: {
       name: data.name,
       strength: data.strength,
-      ndc: data.ndc || undefined,
+      ndc: data.ndc,
       suggestedCount: data.suggestedCount,
-      notes: data.notes || undefined,
-      requestedBy: data.requestedBy || undefined,
-      requestedAt: new Date().toISOString(),
-    }
-    await saveSuggestions([newSuggestion, ...suggestions])
-    revalidatePath('/')
-    return true
-  } catch (error) {
-    console.error("Failed to add suggestion:", error)
-    return false
-  }
-}
-
-export async function deleteSuggestion(id: string) {
-  await requireAdmin()
-  const suggestions = await loadSuggestions()
-  const filtered = suggestions.filter(s => s.id !== id)
-  await saveSuggestions(filtered)
+      notes: data.notes,
+      requestedBy: data.requestedBy,
+    },
+  })
   revalidatePath('/')
   return true
 }
 
-export async function importInventory(data: any[]) {
+export async function deleteSuggestion(id: string) {
   await requireAdmin()
+  requireDatabaseUrl()
+  await prisma.suggestion.delete({ where: { id } })
+  revalidatePath('/')
+  return true
+}
+
+export async function importInventory(data: unknown[]) {
+  await requireAdmin()
+  requireDatabaseUrl()
+
   if (!Array.isArray(data)) {
-    throw new Error("Invalid inventory file format.")
+    throw new Error('Invalid inventory file format.')
   }
 
-  const meds = data.map(item => ({
-    id: item.id,
-    ndc: item.ndc,
-    name: item.name,
-    strength: item.strength,
-    size: item.size,
-    class: item.class,
-    categories: item.categories || [],
-    qty: item.qty,
-    lowQty: item.lowQty,
-    highQty: item.highQty,
-    machine: item.machine,
-    drawer: item.drawer,
-    row: item.row,
-    cost: item.cost ?? 0,
-  }))
+  await prisma.$transaction([
+    prisma.activityLog.deleteMany(),
+    prisma.medication.deleteMany(),
+    prisma.medication.createMany({
+      data: data.map((item: Record<string, unknown>) => ({
+        id: String(item.id),
+        ndc: String(item.ndc),
+        name: String(item.name),
+        strength: String(item.strength),
+        size: String(item.size),
+        class: String(item.class || 'Uncontrolled'),
+        categories: Array.isArray(item.categories) ? (item.categories as string[]) : [],
+        qty: Number(item.qty ?? 0),
+        lowQty: Number(item.lowQty ?? 10),
+        highQty: Number(item.highQty ?? 10),
+        machine: Number(item.machine ?? 1),
+        drawer: String(item.drawer ?? 'A'),
+        row: Number(item.row ?? 1),
+        cost: Number(item.cost ?? 0),
+      })),
+    }),
+  ])
 
-  await saveMedications(meds)
-  await saveActivity([]) // optional: clear activity on full import
-
+  await setSetting('data_as_of', new Date().toISOString())
   revalidatePath('/')
   return true
 }
 
 export async function resetToSeed() {
   await requireAdmin()
-  await saveMedications(SEED_MEDICATIONS)
-  await saveActivity([])
-  await saveSuggestions([])
-  await saveSettings({
-    total_slots: '90',
-    data_as_of: SEED_METADATA.dataAsOf,
-  })
+  requireDatabaseUrl()
+
+  await prisma.$transaction([
+    prisma.activityLog.deleteMany(),
+    prisma.suggestion.deleteMany(),
+    prisma.medication.deleteMany(),
+    prisma.medication.createMany({
+      data: SEED_MEDICATIONS.map((m) => ({
+        id: m.id,
+        ndc: m.ndc,
+        name: m.name,
+        strength: m.strength,
+        size: m.size,
+        class: m.class,
+        categories: m.categories,
+        qty: m.qty,
+        lowQty: m.lowQty,
+        highQty: m.highQty,
+        machine: m.machine,
+        drawer: m.drawer,
+        row: m.row,
+        cost: m.cost,
+      })),
+    }),
+  ])
+
+  await setSetting('total_slots', '90')
+  await setSetting('data_as_of', SEED_METADATA.dataAsOf)
   revalidatePath('/')
   return true
 }
 
 export async function seedDatabaseIfEmpty() {
-  try {
-    const meds = await loadMedications()
-    if (meds.length === 0) {
-      await saveMedications(SEED_MEDICATIONS)
-      await saveActivity([])
-      await saveSuggestions([])
-      await saveSettings({
-        total_slots: '90',
-        data_as_of: SEED_METADATA.dataAsOf,
-      })
-      return true
-    }
-    return false
-  } catch (error) {
-    console.error("seedDatabaseIfEmpty error:", error)
-    return false
-  }
+  requireDatabaseUrl()
+  const count = await prisma.medication.count()
+  if (count > 0) return false
+
+  await prisma.$transaction([
+    prisma.activityLog.deleteMany(),
+    prisma.suggestion.deleteMany(),
+    prisma.medication.createMany({
+      data: SEED_MEDICATIONS.map((m) => ({
+        id: m.id,
+        ndc: m.ndc,
+        name: m.name,
+        strength: m.strength,
+        size: m.size,
+        class: m.class,
+        categories: m.categories,
+        qty: m.qty,
+        lowQty: m.lowQty,
+        highQty: m.highQty,
+        machine: m.machine,
+        drawer: m.drawer,
+        row: m.row,
+        cost: m.cost,
+      })),
+    }),
+  ])
+
+  await setSetting('total_slots', '90')
+  await setSetting('data_as_of', SEED_METADATA.dataAsOf)
+  return true
 }
 
 export async function ensureAdminUser() {
-  // For the Google Sheets version, the bootstrap-admin endpoint handles this.
-  // We keep this function for compatibility with the store.
+  if (!isSharedMode()) return true
+  requireDatabaseUrl()
+
+  const initialPassword = process.env.ADMIN_INITIAL_PASSWORD || 'mpp2026'
+  const hash = await getSetting('admin_password_hash')
+
+  if (!hash) {
+    await setSetting('admin_password_hash', await bcrypt.hash(initialPassword, 10))
+  }
+
+  const adminEmail = 'admin@pickpoint.local'
+  const existing = await prisma.user.findUnique({ where: { email: adminEmail } })
+  if (!existing) {
+    await prisma.user.create({
+      data: {
+        email: adminEmail,
+        name: 'Administrator',
+        isAdmin: true,
+      },
+    })
+  }
+
   return true
 }
