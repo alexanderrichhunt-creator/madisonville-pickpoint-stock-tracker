@@ -173,7 +173,7 @@ export function AdminMenu() {
       <input
         ref={fileInputRef}
         type="file"
-        accept=".xlsx,.xls,.csv,.json,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet,text/csv,application/json"
+        accept=".csv,.json,text/csv,application/json"
         className="hidden"
         onChange={handleImport}
         aria-hidden="true"

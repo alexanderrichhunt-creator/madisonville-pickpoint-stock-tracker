@@ -31,12 +31,12 @@ export function InventoryImportExport() {
 
   const handleDownloadExcel = () => {
     exportMedicationsExcel(medications);
-    toast.success("Excel inventory downloaded.");
+    toast.success("Excel file downloaded (opens in Excel).");
   };
 
   const handleDownloadPdf = () => {
     exportMedicationsPdf(medications, dataAsOfLabel);
-    toast.success("PDF inventory downloaded.");
+    toast.success("Print dialog opened — choose Save as PDF.");
   };
 
   const handleFileSelected = async (event: React.ChangeEvent<HTMLInputElement>) => {
@@ -76,8 +76,8 @@ export function InventoryImportExport() {
         <div>
           <h3 className="font-medium">Inventory Files</h3>
           <p className="text-sm text-muted-foreground">
-            Download the current stock list, edit it in Excel if needed, then upload it
-            to replace inventory with the locations and quantities from your file.
+            Download opens in Excel. Edit quantities and locations, save as CSV,
+            then upload to replace inventory.
           </p>
         </div>
 
@@ -100,7 +100,7 @@ export function InventoryImportExport() {
       <input
         ref={fileInputRef}
         type="file"
-        accept=".xlsx,.xls,.csv,.json,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet,text/csv,application/json"
+        accept=".csv,.json,text/csv,application/json"
         className="hidden"
         onChange={handleFileSelected}
         aria-hidden="true"

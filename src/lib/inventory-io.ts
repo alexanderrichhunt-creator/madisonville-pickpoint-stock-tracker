@@ -1,8 +1,5 @@
 "use client";
 
-import * as XLSX from "xlsx";
-import { jsPDF } from "jspdf";
-import autoTable from "jspdf-autotable";
 import { Medication } from "@/types/medication";
 import { generateMedicationId } from "@/lib/inventory-utils";
 
@@ -22,8 +19,6 @@ const EXPORT_COLUMNS = [
   "Cost",
 ] as const;
 
-type ExportRow = Record<(typeof EXPORT_COLUMNS)[number], string | number>;
-
 function downloadBlob(blob: Blob, filename: string) {
   const url = URL.createObjectURL(blob);
   const link = document.createElement("a");
@@ -39,106 +34,121 @@ function dateStamp(): string {
   return new Date().toISOString().slice(0, 10);
 }
 
-function medicationToExportRow(med: Medication): ExportRow {
-  return {
-    NDC: med.ndc,
-    "Drug Name": med.name,
-    Strength: med.strength,
-    "Package Size": med.size,
-    Class: med.class,
-    Categories: (med.categories ?? []).join("; "),
-    "Current Qty": med.qty,
-    "Low Qty": med.lowQty,
-    "High Qty": med.highQty,
-    Machine: med.machine,
-    Drawer: med.drawer,
-    Row: med.row,
-    Cost: med.cost,
-  };
+function escapeCsvValue(value: string | number): string {
+  const text = String(value ?? "");
+  if (/[",\n\r]/.test(text)) {
+    return `"${text.replace(/"/g, '""')}"`;
+  }
+  return text;
+}
+
+function medicationsToCsv(medications: Medication[]): string {
+  const header = EXPORT_COLUMNS.join(",");
+  const rows = medications.map((med) =>
+    [
+      med.ndc,
+      med.name,
+      med.strength,
+      med.size,
+      med.class,
+      (med.categories ?? []).join("; "),
+      med.qty,
+      med.lowQty,
+      med.highQty,
+      med.machine,
+      med.drawer,
+      med.row,
+      med.cost,
+    ]
+      .map(escapeCsvValue)
+      .join(",")
+  );
+  return `\uFEFF${[header, ...rows].join("\r\n")}`;
 }
 
 export function exportMedicationsExcel(
   medications: Medication[],
-  filename = `pickpoint-inventory-${dateStamp()}.xlsx`
+  filename = `pickpoint-inventory-${dateStamp()}.csv`
 ) {
-  const rows = medications.map(medicationToExportRow);
-  const worksheet = XLSX.utils.json_to_sheet(rows, { header: [...EXPORT_COLUMNS] });
-  worksheet["!cols"] = [
-    { wch: 14 },
-    { wch: 42 },
-    { wch: 16 },
-    { wch: 12 },
-    { wch: 16 },
-    { wch: 28 },
-    { wch: 12 },
-    { wch: 10 },
-    { wch: 10 },
-    { wch: 10 },
-    { wch: 8 },
-    { wch: 6 },
-    { wch: 8 },
-  ];
-  const workbook = XLSX.utils.book_new();
-  XLSX.utils.book_append_sheet(workbook, worksheet, "Inventory");
-  const buffer = XLSX.write(workbook, { bookType: "xlsx", type: "array" });
   downloadBlob(
-    new Blob([buffer], {
-      type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-    }),
+    new Blob([medicationsToCsv(medications)], { type: "text/csv;charset=utf-8;" }),
     filename
   );
 }
 
 export function exportMedicationsPdf(
   medications: Medication[],
-  dataAsOfLabel: string,
-  filename = `pickpoint-inventory-${dateStamp()}.pdf`
+  dataAsOfLabel: string
 ) {
-  const doc = new jsPDF({ orientation: "landscape", unit: "pt", format: "letter" });
-  doc.setFontSize(14);
-  doc.text("Madisonville PickPoint Inventory", 40, 36);
-  doc.setFontSize(10);
-  doc.text(`Data as of ${dataAsOfLabel} · ${medications.length} medications`, 40, 52);
+  const rows = medications
+    .map(
+      (med) => `
+      <tr>
+        <td>${escapeHtml(med.ndc)}</td>
+        <td>${escapeHtml(med.name)}</td>
+        <td>${escapeHtml(med.strength)}</td>
+        <td>${escapeHtml(med.size)}</td>
+        <td>${escapeHtml(med.class)}</td>
+        <td>${med.qty}</td>
+        <td>M${med.machine} ${escapeHtml(med.drawer)}${med.row}</td>
+        <td>${escapeHtml((med.categories ?? []).join(", "))}</td>
+      </tr>`
+    )
+    .join("");
 
-  autoTable(doc, {
-    startY: 64,
-    head: [
-      [
-        "NDC",
-        "Drug Name",
-        "Strength",
-        "Size",
-        "Class",
-        "Qty",
-        "Location",
-        "Categories",
-      ],
-    ],
-    body: medications.map((med) => [
-      med.ndc,
-      med.name,
-      med.strength,
-      med.size,
-      med.class,
-      String(med.qty),
-      `M${med.machine} ${med.drawer}${med.row}`,
-      (med.categories ?? []).join(", "),
-    ]),
-    styles: { fontSize: 7, cellPadding: 3 },
-    headStyles: { fillColor: [15, 118, 110] },
-    columnStyles: {
-      0: { cellWidth: 68 },
-      1: { cellWidth: 150 },
-      2: { cellWidth: 70 },
-      3: { cellWidth: 42 },
-      4: { cellWidth: 58 },
-      5: { cellWidth: 28 },
-      6: { cellWidth: 52 },
-      7: { cellWidth: 110 },
-    },
-  });
+  const html = `<!DOCTYPE html>
+<html>
+  <head>
+    <title>PickPoint Inventory</title>
+    <style>
+      body { font-family: Arial, sans-serif; margin: 24px; color: #111; }
+      h1 { font-size: 20px; margin-bottom: 4px; }
+      p { margin-top: 0; color: #555; font-size: 12px; }
+      table { width: 100%; border-collapse: collapse; font-size: 10px; }
+      th, td { border: 1px solid #ccc; padding: 4px 6px; text-align: left; vertical-align: top; }
+      th { background: #0f766e; color: white; }
+      tr:nth-child(even) { background: #f8fafc; }
+      @media print { body { margin: 12px; } }
+    </style>
+  </head>
+  <body>
+    <h1>Madisonville PickPoint Inventory</h1>
+    <p>Data as of ${escapeHtml(dataAsOfLabel)} · ${medications.length} medications</p>
+    <table>
+      <thead>
+        <tr>
+          <th>NDC</th>
+          <th>Drug Name</th>
+          <th>Strength</th>
+          <th>Size</th>
+          <th>Class</th>
+          <th>Qty</th>
+          <th>Location</th>
+          <th>Categories</th>
+        </tr>
+      </thead>
+      <tbody>${rows}</tbody>
+    </table>
+  </body>
+</html>`;
 
-  doc.save(filename);
+  const printWindow = window.open("", "_blank");
+  if (!printWindow) {
+    throw new Error("Pop-up blocked. Allow pop-ups to download the PDF.");
+  }
+
+  printWindow.document.write(html);
+  printWindow.document.close();
+  printWindow.focus();
+  printWindow.print();
+}
+
+function escapeHtml(value: string): string {
+  return value
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;");
 }
 
 function normalizeHeader(value: unknown): string {
@@ -231,6 +241,54 @@ function sheetRowsToMedications(rows: Record<string, unknown>[]): Medication[] {
   return medications;
 }
 
+function parseCsvLine(line: string): string[] {
+  const values: string[] = [];
+  let current = "";
+  let inQuotes = false;
+
+  for (let index = 0; index < line.length; index += 1) {
+    const char = line[index];
+    if (char === '"') {
+      if (inQuotes && line[index + 1] === '"') {
+        current += '"';
+        index += 1;
+      } else {
+        inQuotes = !inQuotes;
+      }
+    } else if (char === "," && !inQuotes) {
+      values.push(current);
+      current = "";
+    } else {
+      current += char;
+    }
+  }
+
+  values.push(current);
+  return values.map((value) => value.trim());
+}
+
+function parseCsv(text: string): Record<string, unknown>[] {
+  const normalized = text.replace(/^\uFEFF/, "");
+  const lines = normalized
+    .split(/\r?\n/)
+    .map((line) => line.trim())
+    .filter(Boolean);
+
+  if (lines.length < 2) {
+    throw new Error("The uploaded CSV file has no medication rows.");
+  }
+
+  const headers = parseCsvLine(lines[0]);
+  return lines.slice(1).map((line) => {
+    const cells = parseCsvLine(line);
+    const row: Record<string, unknown> = {};
+    headers.forEach((header, index) => {
+      row[header] = cells[index] ?? "";
+    });
+    return row;
+  });
+}
+
 export function parseInventoryJson(text: string): Medication[] {
   const parsed = JSON.parse(text) as unknown;
   if (!Array.isArray(parsed)) {
@@ -246,19 +304,10 @@ export function parseInventoryJson(text: string): Medication[] {
     .filter((item): item is Medication => item !== null);
 }
 
-export function parseInventoryWorkbook(buffer: ArrayBuffer): Medication[] {
-  const workbook = XLSX.read(buffer, { type: "array" });
-  const sheetName = workbook.SheetNames[0];
-  if (!sheetName) {
-    throw new Error("The uploaded spreadsheet has no worksheets.");
-  }
-  const rows = XLSX.utils.sheet_to_json<Record<string, unknown>>(
-    workbook.Sheets[sheetName],
-    { defval: "" }
-  );
-  const medications = sheetRowsToMedications(rows);
+export function parseInventoryCsv(text: string): Medication[] {
+  const medications = sheetRowsToMedications(parseCsv(text));
   if (medications.length === 0) {
-    throw new Error("No medications were found in the uploaded file.");
+    throw new Error("No medications were found in the uploaded CSV file.");
   }
   return medications;
 }
@@ -271,23 +320,14 @@ export async function parseInventoryFile(file: File): Promise<Medication[]> {
   }
 
   if (extension === "csv") {
-    const workbook = XLSX.read(await file.text(), { type: "string" });
-    const sheetName = workbook.SheetNames[0];
-    if (!sheetName) throw new Error("The uploaded CSV file is empty.");
-    const rows = XLSX.utils.sheet_to_json<Record<string, unknown>>(
-      workbook.Sheets[sheetName],
-      { defval: "" }
-    );
-    const medications = sheetRowsToMedications(rows);
-    if (medications.length === 0) {
-      throw new Error("No medications were found in the uploaded CSV file.");
-    }
-    return medications;
+    return parseInventoryCsv(await file.text());
   }
 
   if (extension === "xlsx" || extension === "xls") {
-    return parseInventoryWorkbook(await file.arrayBuffer());
+    throw new Error(
+      "Please save your Excel file as CSV (File → Save As → CSV) and upload that file."
+    );
   }
 
-  throw new Error("Upload an Excel (.xlsx), CSV, or JSON inventory file.");
+  throw new Error("Upload a CSV or JSON inventory file exported from this app.");
 }
