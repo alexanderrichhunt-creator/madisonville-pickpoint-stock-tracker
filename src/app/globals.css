@@ -38,6 +38,6 @@
 
 @layer components {
   .app-shell {
-    @apply mx-auto w-full max-w-none px-2 sm:px-3 lg:px-4;
+    @apply mx-auto w-full max-w-screen-2xl px-3 sm:px-4 lg:px-6;
   }
 }
