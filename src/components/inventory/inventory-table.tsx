@@ -111,7 +111,7 @@ export function InventoryTable({ medications }: InventoryTableProps) {
     <>
       <div className="rounded-lg border bg-card shadow-sm">
         <div className="overflow-x-auto">
-          <Table>
+          <Table className="[&_th]:px-2 [&_td]:px-2 [&_td]:py-2">
             <TableHeader>
               <TableRow>
                 <TableHead className="min-w-[180px]">
@@ -135,7 +135,7 @@ export function InventoryTable({ medications }: InventoryTableProps) {
                 <TableHead className="min-w-[168px] whitespace-nowrap">
                   <SortButton column="drawer">Location</SortButton>
                 </TableHead>
-                <TableHead className="sticky right-0 z-10 min-w-[260px] bg-card text-right shadow-[-4px_0_8px_-4px_rgba(0,0,0,0.08)]">
+                <TableHead className="sticky right-0 z-10 min-w-[240px] bg-card text-right shadow-[-4px_0_8px_-4px_rgba(0,0,0,0.08)]">
                   Actions
                 </TableHead>
               </TableRow>

@@ -12,7 +12,7 @@ export function Header() {
 
   return (
     <header className="border-b bg-card shadow-sm">
-      <div className="mx-auto flex max-w-7xl flex-col gap-4 px-4 py-4 sm:flex-row sm:items-center sm:justify-between sm:px-6 lg:px-8">
+      <div className="app-shell flex flex-col gap-4 py-4 sm:flex-row sm:items-center sm:justify-between">
         <div className="flex items-start gap-3">
           <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-lg bg-primary text-primary-foreground">
             <Pill className="h-6 w-6" aria-hidden="true" />

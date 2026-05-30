@@ -60,7 +60,7 @@ export default function HomePage() {
       <Header />
       <SharedSyncBanner />
 
-      <main className="mx-auto w-full max-w-7xl flex-1 px-4 py-6 sm:px-6 lg:px-8">
+      <main className="app-shell flex-1 py-4 sm:py-5">
         <Tabs defaultValue="inventory" className="space-y-6">
           <TabsList className="grid w-full max-w-lg grid-cols-3">
             <TabsTrigger value="inventory">Inventory</TabsTrigger>
