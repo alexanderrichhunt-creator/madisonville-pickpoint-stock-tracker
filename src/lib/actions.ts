@@ -245,6 +245,7 @@ export async function deleteMedication(id: string) {
 }
 
 export async function dispense(medicationId: string, qty: number) {
+  await requireAdmin()
   requireDatabaseUrl()
 
   const med = await prisma.medication.findUnique({ where: { id: medicationId } })

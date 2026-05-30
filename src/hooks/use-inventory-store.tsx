@@ -101,8 +101,8 @@ export function InventoryProvider({ children }: { children: React.ReactNode }) {
   const [lastUpdated, setLastUpdated] = useState(SEED_METADATA.dataAsOf);
   const [isHydrated, setIsHydrated] = useState(false);
 
-  // Real admin state comes from Auth.js session (isAdmin flag on the JWT + User)
-  const isAdmin = !!session?.user?.isAdmin;
+  // Admin only after explicit login (never default to admin on startup)
+  const isAdmin = session?.user?.isAdmin === true;
   const currentUser = useMemo(
     () =>
       session?.user
@@ -221,6 +221,11 @@ export function InventoryProvider({ children }: { children: React.ReactNode }) {
 
   const dispense = useCallback(
     async (id: string, qty: number): Promise<boolean> => {
+      if (!isAdmin) {
+        toast.error("Admin login required to dispense.");
+        return false;
+      }
+
       const med = medications.find((m) => m.id === id);
       if (!med || qty <= 0 || qty > med.qty) return false;
 
@@ -260,7 +265,7 @@ export function InventoryProvider({ children }: { children: React.ReactNode }) {
         return false;
       }
     },
-    [medications, activity, updateTimestamp, refreshFromServer]
+    [medications, activity, isAdmin, updateTimestamp, refreshFromServer]
   );
 
   const addMedication = useCallback(

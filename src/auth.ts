@@ -97,19 +97,20 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
   ],
   session: {
     strategy: "jwt",
+    maxAge: 8 * 60 * 60,
   },
   callbacks: {
     async jwt({ token, user }) {
       if (user) {
         token.id = user.id
-        token.isAdmin = user.isAdmin ?? true
+        token.isAdmin = user.isAdmin === true
       }
       return token
     },
     async session({ session, token }) {
       if (session.user) {
         session.user.id = token.id as string
-        session.user.isAdmin = (token.isAdmin as boolean) ?? true
+        session.user.isAdmin = token.isAdmin === true
       }
       return session
     },

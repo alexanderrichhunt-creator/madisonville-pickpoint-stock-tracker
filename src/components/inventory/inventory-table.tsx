@@ -207,16 +207,18 @@ export function InventoryTable({ medications }: InventoryTableProps) {
                             <Copy className="h-3.5 w-3.5" aria-hidden="true" />
                             <span className="ml-1 hidden lg:inline">Copy</span>
                           </Button>
-                          <Button
-                            size="sm"
-                            className="h-8 shrink-0 px-2.5"
-                            onClick={() => setDispenseMed(med)}
-                            disabled={med.qty === 0}
-                            aria-label={`Dispense ${med.name}`}
-                          >
-                            <Pill className="h-3.5 w-3.5" aria-hidden="true" />
-                            <span className="ml-1">Dispense</span>
-                          </Button>
+                          {isAuthenticatedAdmin && (
+                            <Button
+                              size="sm"
+                              className="h-8 shrink-0 px-2.5"
+                              onClick={() => setDispenseMed(med)}
+                              disabled={med.qty === 0}
+                              aria-label={`Dispense ${med.name}`}
+                            >
+                              <Pill className="h-3.5 w-3.5" aria-hidden="true" />
+                              <span className="ml-1">Dispense</span>
+                            </Button>
+                          )}
                           {isAuthenticatedAdmin && (
                             <div className="ml-0.5 flex shrink-0 items-center gap-0.5 border-l pl-1">
                               <Button
@@ -252,12 +254,14 @@ export function InventoryTable({ medications }: InventoryTableProps) {
         </div>
       </div>
 
-      <DispenseDialog
-        medication={dispenseMed}
-        open={!!dispenseMed}
-        onOpenChange={(open) => !open && setDispenseMed(null)}
-        onConfirm={dispense}
-      />
+      {isAuthenticatedAdmin && (
+        <DispenseDialog
+          medication={dispenseMed}
+          open={!!dispenseMed}
+          onOpenChange={(open) => !open && setDispenseMed(null)}
+          onConfirm={dispense}
+        />
+      )}
 
       <EditDialog
         medication={editMed}
