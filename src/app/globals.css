@@ -31,6 +31,11 @@
   * {
     @apply border-border;
   }
+  body {
+    @apply bg-background text-foreground antialiased;
+  }
+}
+
 @layer components {
   .app-shell {
     @apply mx-auto w-full max-w-none px-2 sm:px-3 lg:px-4;
