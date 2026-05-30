@@ -166,61 +166,53 @@ export async function deleteMedication(id: string) {
 
 export async function dispense(medicationId: string, qty: number, dispensedBy?: string) {
   const user = await requireAdmin()
+
   try {
-    const med = await prisma.medication.findUnique({ where: { id: medicationId } })
+    const meds = await loadMedications()
+    const med = meds.find(m => m.id === medicationId)
     if (!med || qty <= 0 || qty > med.qty) {
       return false
     }
 
     const remainingQty = med.qty - qty
 
-    await prisma.$transaction(async (tx) => {
-      await tx.medication.update({
-        where: { id: medicationId },
-        data: { qty: remainingQty },
-      })
+    const updatedMeds = meds.map(m =>
+      m.id === medicationId ? { ...m, qty: remainingQty } : m
+    )
+    await saveMedications(updatedMeds)
 
-      await tx.activityLog.create({
-        data: {
-          medicationId,
-          drugName: med.name,
-          ndc: med.ndc,
-          qtyDispensed: qty,
-          remainingQty,
-          dispensedBy: dispensedBy || user.name || user.email || "Admin",
-        },
-      })
-    })
+    const activity = await loadActivity()
+    const newEntry = {
+      id: crypto.randomUUID(),
+      timestamp: new Date().toISOString(),
+      medicationId,
+      drugName: med.name,
+      ndc: med.ndc,
+      qtyDispensed: qty,
+      remainingQty,
+    }
+    await saveActivity([newEntry, ...activity])
 
     revalidatePath('/')
     return true
-  } catch (error: any) {
-    if (isPrismaMisconfigured(error)) {
-      console.warn("Dispense attempted in degraded Prisma mode — change not persisted to DB.");
-      // Still return true so the UI can do optimistic update
-      return true;
-    }
-    throw error;
+  } catch (error) {
+    console.error("Failed to dispense:", error)
+    return false
   }
 }
 
 export async function updateTotalSlots(newTotal: number) {
   await requireAdmin()
   try {
-    await prisma.appSetting.upsert({
-      where: { key: 'total_slots' },
-      update: { value: newTotal.toString() },
-      create: { key: 'total_slots', value: newTotal.toString() },
-    })
+    const settings = await loadSettings()
+    settings.total_slots = newTotal.toString()
+    await saveSettings(settings)
 
     revalidatePath('/')
     return true
-  } catch (error: any) {
-    if (isPrismaMisconfigured(error)) {
-      console.warn("Capacity update in degraded mode — not persisted.");
-      return true;
-    }
-    throw error;
+  } catch (error) {
+    console.error("Failed to update total slots:", error)
+    return false
   }
 }
 
@@ -233,26 +225,23 @@ export async function addSuggestion(data: {
   requestedBy?: string
 }) {
   try {
-    await prisma.suggestion.create({
-      data: {
-        name: data.name,
-        strength: data.strength,
-        ndc: data.ndc || null,
-        suggestedCount: data.suggestedCount || null,
-        notes: data.notes || null,
-        requestedBy: data.requestedBy || null,
-      },
-    })
-
+    const suggestions = await loadSuggestions()
+    const newSuggestion = {
+      id: crypto.randomUUID(),
+      name: data.name,
+      strength: data.strength,
+      ndc: data.ndc || undefined,
+      suggestedCount: data.suggestedCount,
+      notes: data.notes || undefined,
+      requestedBy: data.requestedBy || undefined,
+      requestedAt: new Date().toISOString(),
+    }
+    await saveSuggestions([newSuggestion, ...suggestions])
     revalidatePath('/')
     return true
-  } catch (error: any) {
-    if (isPrismaMisconfigured(error)) {
-      console.warn("Suggestion submitted in degraded Prisma mode — not persisted.");
-      return true; // Let the UI think it succeeded
-    }
-    console.error("addSuggestion failed:", error)
-    throw error
+  } catch (error) {
+    console.error("Failed to add suggestion:", error)
+    return false
   }
 }
 
@@ -267,37 +256,29 @@ export async function deleteSuggestion(id: string) {
 
 export async function importInventory(data: any[]) {
   await requireAdmin()
-  // Basic validation (can be enhanced)
   if (!Array.isArray(data)) {
     throw new Error("Invalid inventory file format.")
   }
 
-  // Clear existing medications and insert new ones
-  await prisma.$transaction(async (tx) => {
-    await tx.medication.deleteMany()
-    await tx.activityLog.deleteMany() // optional: clear activity on full import
+  const meds = data.map(item => ({
+    id: item.id,
+    ndc: item.ndc,
+    name: item.name,
+    strength: item.strength,
+    size: item.size,
+    class: item.class,
+    categories: item.categories || [],
+    qty: item.qty,
+    lowQty: item.lowQty,
+    highQty: item.highQty,
+    machine: item.machine,
+    drawer: item.drawer,
+    row: item.row,
+    cost: item.cost ?? 0,
+  }))
 
-    for (const item of data) {
-      await tx.medication.create({
-        data: {
-          id: item.id,
-          ndc: item.ndc,
-          name: item.name,
-          strength: item.strength,
-          size: item.size,
-          class: item.class,
-          categories: item.categories || [],
-          qty: item.qty,
-          lowQty: item.lowQty,
-          highQty: item.highQty,
-          machine: item.machine,
-          drawer: item.drawer,
-          row: item.row,
-          cost: item.cost ?? 0,
-        },
-      })
-    }
-  })
+  await saveMedications(meds)
+  await saveActivity([]) // optional: clear activity on full import
 
   revalidatePath('/')
   return true
@@ -305,7 +286,6 @@ export async function importInventory(data: any[]) {
 
 export async function resetToSeed() {
   await requireAdmin()
-  // For Google Sheets version: just reload from the seed data into sheets
   await saveMedications(SEED_MEDICATIONS)
   await saveActivity([])
   await saveSuggestions([])
