@@ -10,7 +10,7 @@ Your browser opens to **http://localhost:3000** with all 69 medications loaded.
 | Action | How |
 |--------|-----|
 | Search / filter inventory | Use the main table |
-| Dispense | Click **Dispense** on any row (no login needed) |
+| Dispense | Click **Admin Login**, then **Dispense** on any row |
 | Admin (add/edit/delete) | Click **Admin Login** → `admin` / `mpp2026` |
 
 Data saves in your browser on this computer. See `GET-STARTED.txt` for more detail.

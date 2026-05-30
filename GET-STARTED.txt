@@ -13,7 +13,7 @@ STEP 3: Use the app
    Your browser opens to http://localhost:3000
    You will see all 69 medications from the April 2026 PDF.
 
-   To dispense: click "Dispense" on any row (no login needed in local mode).
+   To dispense: click "Admin Login" first, then "Dispense" on any row.
 
    For admin (add/edit/delete inventory):
    - Click "Admin Login"
