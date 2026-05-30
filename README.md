@@ -33,7 +33,7 @@ Internal inventory tracker for **Madisonville Family Medicine** PickPoint intell
 - Machine capacity display (90 slots default, editable by admins)
 - Provider **Suggestions** tab
 - **Local mode** (default): works immediately, no Google setup
-- **Shared mode** (optional): Google Sheets for whole-clinic sync
+- **Shared mode** (optional): Render + Neon Postgres for whole-clinic sync
 
 ---
 
@@ -47,7 +47,7 @@ NEXT_PUBLIC_LOCAL_MODE=true
 
 No Google Sheets needed. Perfect for one computer in the clinic.
 
-**Shared mode** (when ready for the whole team): set `NEXT_PUBLIC_LOCAL_MODE=false` and add Google Sheets credentials. See deployment section below.
+**Shared mode** (when ready for the whole team): set `NEXT_PUBLIC_LOCAL_MODE=false` and add `DATABASE_URL` on Render. See [`DEPLOY-ONLINE.md`](DEPLOY-ONLINE.md).
 
 ---
 
@@ -72,13 +72,13 @@ Open http://localhost:3000
 
 ## Deploy Online (whole clinic)
 
-Local mode is for one computer. For **shared online access**, use **Render + Google Sheets** (not Neon).
+Local mode is for one computer. For **shared online access**, use **Render + Neon Postgres** (same as Branch Secretary Tool).
 
 **Full step-by-step guide:** [`DEPLOY-ONLINE.md`](DEPLOY-ONLINE.md)
 
 Summary:
-1. Create Google Sheet + service account (reuse Talk Tracker credentials if you have them)
-2. Push repo to GitHub
+1. Copy your Neon `DATABASE_URL` from neon.tech (or reuse the same Neon project as Branch Secretary Tool with a new database)
+2. Code is on GitHub: `alexanderrichhunt-creator/madisonville-pickpoint-stock-tracker`
 3. Deploy on Render with env vars from `.env.local.example`
 4. Visit `/api/bootstrap-admin` once after deploy
 

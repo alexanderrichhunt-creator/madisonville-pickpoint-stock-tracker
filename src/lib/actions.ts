@@ -322,11 +322,16 @@ export async function importInventory(data: unknown[]) {
     throw new Error('Invalid inventory file format.')
   }
 
+  const records = data.filter(
+    (item): item is Record<string, unknown> =>
+      typeof item === 'object' && item !== null
+  )
+
   await prisma.$transaction([
     prisma.activityLog.deleteMany(),
     prisma.medication.deleteMany(),
     prisma.medication.createMany({
-      data: data.map((item: Record<string, unknown>) => ({
+      data: records.map((item) => ({
         id: String(item.id),
         ndc: String(item.ndc),
         name: String(item.name),
