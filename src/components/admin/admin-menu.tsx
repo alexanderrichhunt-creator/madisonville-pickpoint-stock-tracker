@@ -94,8 +94,13 @@ export function AdminMenu() {
     if (!file) return;
 
     try {
-      const data = await parseInventoryFile(file);
-      await importInventory(data);
+      const parsed = await parseInventoryFile(file);
+      await importInventory(parsed.medications, { dataAsOf: parsed.dataAsOf });
+      if (parsed.source === "pdf") {
+        toast.success(
+          `Imported ${parsed.medications.length} medications from PDF with auto-assigned categories.`
+        );
+      }
     } catch (error: unknown) {
       const message =
         error instanceof Error ? error.message : "Could not import inventory file.";
@@ -173,7 +178,7 @@ export function AdminMenu() {
       <input
         ref={fileInputRef}
         type="file"
-        accept=".csv,.json,text/csv,application/json"
+        accept=".pdf,.csv,.json,application/pdf,text/csv,application/json"
         className="hidden"
         onChange={handleImport}
         aria-hidden="true"

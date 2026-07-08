@@ -27,7 +27,11 @@ export function InventoryImportExport() {
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [pendingFile, setPendingFile] = useState<File | null>(null);
   const [pendingMedications, setPendingMedications] = useState<Medication[]>([]);
+  const [pendingDataAsOf, setPendingDataAsOf] = useState<string | undefined>();
+  const [pendingWarnings, setPendingWarnings] = useState<string[]>([]);
+  const [pendingSource, setPendingSource] = useState<"csv" | "json" | "pdf" | null>(null);
   const [confirmOpen, setConfirmOpen] = useState(false);
+  const [isParsing, setIsParsing] = useState(false);
 
   const handleDownloadExcel = () => {
     exportMedicationsExcel(medications);
@@ -39,20 +43,40 @@ export function InventoryImportExport() {
     toast.success("Print dialog opened — choose Save as PDF.");
   };
 
+  const resetPending = () => {
+    setPendingFile(null);
+    setPendingMedications([]);
+    setPendingDataAsOf(undefined);
+    setPendingWarnings([]);
+    setPendingSource(null);
+  };
+
   const handleFileSelected = async (event: React.ChangeEvent<HTMLInputElement>) => {
     const file = event.target.files?.[0];
     event.target.value = "";
     if (!file) return;
 
+    setIsParsing(true);
     try {
       const parsed = await parseInventoryFile(file);
       setPendingFile(file);
-      setPendingMedications(parsed);
+      setPendingMedications(parsed.medications);
+      setPendingDataAsOf(parsed.dataAsOf);
+      setPendingWarnings(parsed.warnings ?? []);
+      setPendingSource(parsed.source);
       setConfirmOpen(true);
+
+      if (parsed.source === "pdf") {
+        toast.success(
+          `Parsed ${parsed.medications.length} medications from PDF with auto-assigned categories.`
+        );
+      }
     } catch (error: unknown) {
       const message =
         error instanceof Error ? error.message : "Could not read the uploaded file.";
       toast.error(message);
+    } finally {
+      setIsParsing(false);
     }
   };
 
@@ -60,14 +84,13 @@ export function InventoryImportExport() {
     if (pendingMedications.length === 0) {
       toast.error("No medications to import.");
       setConfirmOpen(false);
-      setPendingFile(null);
+      resetPending();
       return;
     }
 
-    await importInventory(pendingMedications);
+    await importInventory(pendingMedications, { dataAsOf: pendingDataAsOf });
     setConfirmOpen(false);
-    setPendingFile(null);
-    setPendingMedications([]);
+    resetPending();
   };
 
   return (
@@ -76,8 +99,10 @@ export function InventoryImportExport() {
         <div>
           <h3 className="font-medium">Inventory Files</h3>
           <p className="text-sm text-muted-foreground">
-            Download opens in Excel. Edit quantities and locations, save as CSV,
-            then upload to replace inventory.
+            Upload a PickPoint inventory PDF to update medications automatically —
+            categories and controlled-substance designations are assigned for you.
+            You can also download Excel, edit quantities and locations, save as CSV,
+            and upload that file.
           </p>
         </div>
 
@@ -90,9 +115,13 @@ export function InventoryImportExport() {
             <FileText className="mr-2 h-4 w-4" aria-hidden="true" />
             Download PDF
           </Button>
-          <Button size="sm" onClick={() => fileInputRef.current?.click()}>
+          <Button
+            size="sm"
+            onClick={() => fileInputRef.current?.click()}
+            disabled={isParsing}
+          >
             <Upload className="mr-2 h-4 w-4" aria-hidden="true" />
-            Upload Inventory
+            {isParsing ? "Reading PDF..." : "Upload Inventory"}
           </Button>
         </div>
       </div>
@@ -100,7 +129,7 @@ export function InventoryImportExport() {
       <input
         ref={fileInputRef}
         type="file"
-        accept=".csv,.json,text/csv,application/json"
+        accept=".pdf,.csv,.json,application/pdf,text/csv,application/json"
         className="hidden"
         onChange={handleFileSelected}
         aria-hidden="true"
@@ -110,29 +139,55 @@ export function InventoryImportExport() {
         <AlertDialogContent>
           <AlertDialogHeader>
             <AlertDialogTitle>Replace inventory from file?</AlertDialogTitle>
-            <AlertDialogDescription>
-              {pendingFile ? (
-                <>
-                  Uploading <strong>{pendingFile.name}</strong> will replace the current
-                  inventory with <strong>{pendingMedications.length}</strong> medications
-                  from the file. Machine, drawer, row, and quantity values from the
-                  spreadsheet will be applied automatically. The activity log will be
-                  cleared.
-                </>
-              ) : (
-                "This will replace the current inventory with the uploaded file."
-              )}
+            <AlertDialogDescription asChild>
+              <div className="space-y-2 text-sm text-muted-foreground">
+                {pendingFile ? (
+                  <>
+                    <p>
+                      Uploading <strong>{pendingFile.name}</strong> will replace the
+                      current inventory with{" "}
+                      <strong>{pendingMedications.length}</strong> medications from
+                      the file.
+                    </p>
+                    {pendingSource === "pdf" && (
+                      <p>
+                        Categories and drug class designations were automatically
+                        assigned from the medication names and NDC codes.
+                        {pendingDataAsOf
+                          ? ` Report date: ${pendingDataAsOf}.`
+                          : ""}
+                      </p>
+                    )}
+                    {pendingWarnings.length > 0 && (
+                      <div className="rounded-md border border-amber-200 bg-amber-50 p-2 text-amber-900">
+                        <p className="font-medium">Parser notes</p>
+                        <ul className="mt-1 list-disc pl-5">
+                          {pendingWarnings.slice(0, 5).map((warning) => (
+                            <li key={warning}>{warning}</li>
+                          ))}
+                        </ul>
+                        {pendingWarnings.length > 5 && (
+                          <p className="mt-1">
+                            …and {pendingWarnings.length - 5} more warnings.
+                          </p>
+                        )}
+                      </div>
+                    )}
+                    <p>
+                      Machine, drawer, row, and quantity values from the file will be
+                      applied automatically. The activity log will be cleared.
+                    </p>
+                  </>
+                ) : (
+                  <p>
+                    This will replace the current inventory with the uploaded file.
+                  </p>
+                )}
+              </div>
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
-            <AlertDialogCancel
-              onClick={() => {
-                setPendingFile(null);
-                setPendingMedications([]);
-              }}
-            >
-              Cancel
-            </AlertDialogCancel>
+            <AlertDialogCancel onClick={resetPending}>Cancel</AlertDialogCancel>
             <AlertDialogAction onClick={handleConfirmImport}>
               <Download className="mr-2 h-4 w-4" aria-hidden="true" />
               Import Inventory

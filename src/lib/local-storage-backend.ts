@@ -49,6 +49,10 @@ export function saveLocalMedications(medications: Medication[]) {
   writeJson(KEYS.lastUpdated, new Date().toISOString());
 }
 
+export function saveLocalDataAsOf(label: string) {
+  writeJson(KEYS.lastUpdated, label);
+}
+
 export function saveLocalActivity(activity: ActivityEntry[]) {
   writeJson(KEYS.activity, activity);
   writeJson(KEYS.lastUpdated, new Date().toISOString());

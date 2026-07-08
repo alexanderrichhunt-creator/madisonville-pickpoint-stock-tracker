@@ -1,6 +1,7 @@
 "use client";
 
 import { Medication } from "@/types/medication";
+import { enrichMedication } from "@/lib/drug-classifier";
 import { generateMedicationId } from "@/lib/inventory-utils";
 
 const EXPORT_COLUMNS = [
@@ -214,7 +215,7 @@ function rowToMedication(row: Record<string, unknown>, index: number): Medicatio
     toStringValue(pickValue(row, ["id"])) ||
     generateMedicationId(resolvedNdc, machine, drawer, rowNum);
 
-  return {
+  const base = {
     id,
     ndc: resolvedNdc,
     name: name || `Medication ${index + 1}`,
@@ -230,6 +231,10 @@ function rowToMedication(row: Record<string, unknown>, index: number): Medicatio
     row: rowNum,
     cost: toNumberValue(pickValue(row, ["cost", "unit cost"])),
   };
+
+  return enrichMedication(base, {
+    preserveCategories: base.categories.length > 0,
+  });
 }
 
 function sheetRowsToMedications(rows: Record<string, unknown>[]): Medication[] {
@@ -312,15 +317,64 @@ export function parseInventoryCsv(text: string): Medication[] {
   return medications;
 }
 
-export async function parseInventoryFile(file: File): Promise<Medication[]> {
+export interface InventoryImportResult {
+  medications: Medication[];
+  dataAsOf?: string;
+  warnings?: string[];
+  source: "csv" | "json" | "pdf";
+}
+
+async function parseInventoryPdf(file: File): Promise<InventoryImportResult> {
+  const formData = new FormData();
+  formData.append("file", file);
+
+  const response = await fetch("/api/parse-pdf", {
+    method: "POST",
+    body: formData,
+  });
+
+  const payload = (await response.json()) as {
+    medications?: Medication[];
+    dataAsOf?: string;
+    warnings?: string[];
+    error?: string;
+  };
+
+  if (!response.ok) {
+    throw new Error(payload.error ?? "Failed to parse the uploaded PDF.");
+  }
+
+  if (!payload.medications?.length) {
+    throw new Error("No medications were found in the uploaded PDF.");
+  }
+
+  return {
+    medications: payload.medications,
+    dataAsOf: payload.dataAsOf,
+    warnings: payload.warnings,
+    source: "pdf",
+  };
+}
+
+export async function parseInventoryFile(file: File): Promise<InventoryImportResult> {
   const extension = file.name.split(".").pop()?.toLowerCase() ?? "";
 
+  if (extension === "pdf") {
+    return parseInventoryPdf(file);
+  }
+
   if (extension === "json") {
-    return parseInventoryJson(await file.text());
+    return {
+      medications: parseInventoryJson(await file.text()),
+      source: "json",
+    };
   }
 
   if (extension === "csv") {
-    return parseInventoryCsv(await file.text());
+    return {
+      medications: parseInventoryCsv(await file.text()),
+      source: "csv",
+    };
   }
 
   if (extension === "xlsx" || extension === "xls") {
@@ -329,5 +383,7 @@ export async function parseInventoryFile(file: File): Promise<Medication[]> {
     );
   }
 
-  throw new Error("Upload a CSV or JSON inventory file exported from this app.");
+  throw new Error(
+    "Upload a PickPoint inventory PDF, CSV, or JSON file exported from this app."
+  );
 }

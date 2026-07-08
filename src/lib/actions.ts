@@ -315,7 +315,7 @@ export async function deleteSuggestion(id: string) {
   return true
 }
 
-export async function importInventory(data: unknown[]) {
+export async function importInventory(data: unknown[], dataAsOf?: string) {
   await requireAdmin()
   requireDatabaseUrl()
 
@@ -351,7 +351,7 @@ export async function importInventory(data: unknown[]) {
     }),
   ])
 
-  await setSetting('data_as_of', new Date().toISOString())
+  await setSetting('data_as_of', dataAsOf ?? new Date().toISOString())
   revalidatePath('/')
   return true
 }

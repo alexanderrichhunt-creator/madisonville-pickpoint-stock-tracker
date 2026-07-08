@@ -16,6 +16,7 @@ import {
   resetLocalInventory,
   saveLocalActivity,
   saveLocalMedications,
+  saveLocalDataAsOf,
   saveLocalSuggestions,
   saveLocalTotalSlots,
 } from "@/lib/local-storage-backend";
@@ -70,7 +71,7 @@ interface InventoryContextValue {
   addMedication: (med: Omit<Medication, "id">) => Promise<boolean>;
   updateMedication: (med: Medication) => void;
   deleteMedication: (id: string) => void;
-  importInventory: (data: unknown) => Promise<boolean>;
+  importInventory: (data: unknown, options?: { dataAsOf?: string }) => Promise<boolean>;
   exportInventory: () => void;
   resetToSeed: () => Promise<boolean>;
   seedDatabaseIfEmpty: () => Promise<boolean>;
@@ -351,11 +352,13 @@ export function InventoryProvider({ children }: { children: React.ReactNode }) {
   );
 
   const importInventory = useCallback(
-    async (data: unknown): Promise<boolean> => {
+    async (data: unknown, options?: { dataAsOf?: string }): Promise<boolean> => {
       if (!Array.isArray(data)) {
         toast.error("Invalid inventory file format.");
         return false;
       }
+
+      const dataAsOfLabel = options?.dataAsOf;
 
       if (isLocalMode) {
         const normalized = (data as Record<string, unknown>[]).map((item) => ({
@@ -376,9 +379,14 @@ export function InventoryProvider({ children }: { children: React.ReactNode }) {
         })) as Medication[];
         setMedications(normalized);
         setActivity([]);
-        updateTimestamp();
         saveLocalMedications(normalized);
         saveLocalActivity([]);
+        if (dataAsOfLabel) {
+          setLastUpdated(dataAsOfLabel);
+          saveLocalDataAsOf(dataAsOfLabel);
+        } else {
+          updateTimestamp();
+        }
         toast.success(`Imported ${normalized.length} medications.`);
         return true;
       }
@@ -389,7 +397,7 @@ export function InventoryProvider({ children }: { children: React.ReactNode }) {
       }
 
       try {
-        await serverImportInventory(data as Medication[]);
+        await serverImportInventory(data as Medication[], dataAsOfLabel);
         await refreshFromServer();
         toast.success(`Imported ${data.length} medications.`);
         return true;
@@ -399,7 +407,7 @@ export function InventoryProvider({ children }: { children: React.ReactNode }) {
         return false;
       }
     },
-    [updateTimestamp]
+    [updateTimestamp, refreshFromServer]
   );
 
   const exportInventory = useCallback(() => {
